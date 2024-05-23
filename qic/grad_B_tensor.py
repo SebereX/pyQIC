@@ -21,10 +21,15 @@ def calculate_grad_B_tensor(self):
 
     self should be an instance of qic with X1c, Y1s etc populated.
     """
-
-    s = self # Shorthand
+    # Shorthand
+    s = self
+    ##############
+    # COMPUTE ∇B #
+    ##############
+    # Tensor ∇B as a structure
     tensor = Struct()
     
+    # Construct the tensor in the Frenet-Serret basis
     factor = s.B0 * s.B0 / s.d_l_d_varphi / s.Bbar
     tensor.tn = s.sG * s.B0 * s.curvature
     tensor.nt = tensor.tn
@@ -45,23 +50,32 @@ def calculate_grad_B_tensor(self):
 
     self.grad_B_tensor = tensor
     
-    t = s.tangent_cylindrical.transpose()
-    n = s.normal_cylindrical.transpose()
-    b = s.binormal_cylindrical.transpose()
-    self.grad_B_tensor_cylindrical = np.array([[
-                              tensor.nn * n[i] * n[j] \
-                            + tensor.bn * b[i] * n[j] + tensor.nb * n[i] * b[j] \
-                            + tensor.bb * b[i] * b[j] \
-                            + tensor.tn * t[i] * n[j] + tensor.nt * n[i] * t[j] \
-                            + tensor.tt * t[i] * t[j]
-                        for i in range(3)] for j in range(3)])
-    self.grad_B_tensor_cylindrical_array = np.reshape(self.grad_B_tensor_cylindrical, 9 * self.nphi)
+    #########################################
+    # COMPUTE ∇B IN CYLINDRICAL COORDINATES #
+    #########################################
+    # Work with cylindrical coordinates if R/Z as inputs
+    if not self.frenet:
+        t = s.tangent_cylindrical.transpose()
+        n = s.normal_cylindrical.transpose()
+        b = s.binormal_cylindrical.transpose()
+        self.grad_B_tensor_cylindrical = np.array([[
+                                tensor.nn * n[i] * n[j] \
+                                + tensor.bn * b[i] * n[j] + tensor.nb * n[i] * b[j] \
+                                + tensor.bb * b[i] * b[j] \
+                                + tensor.tn * t[i] * n[j] + tensor.nt * n[i] * t[j] \
+                                + tensor.tt * t[i] * t[j]
+                            for i in range(3)] for j in range(3)])
+        self.grad_B_tensor_cylindrical_array = np.reshape(self.grad_B_tensor_cylindrical, 9 * self.nphi)
 
+    ##################
+    # L∇ COMPUTATION #
+    ##################
+    # Frobenius norm of ∇B
     self.grad_B_colon_grad_B = tensor.tn * tensor.tn + tensor.nt * tensor.nt \
         + tensor.bb * tensor.bb + tensor.nn * tensor.nn \
         + tensor.nb * tensor.nb + tensor.bn * tensor.bn \
         + tensor.tt * tensor.tt
-
+    # L∇ definition
     self.L_grad_B = s.B0 * np.sqrt(2 / self.grad_B_colon_grad_B)
     self.inv_L_grad_B = 1.0 / self.L_grad_B
     self.min_L_grad_B = fourier_minimum(self.L_grad_B)

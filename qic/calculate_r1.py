@@ -363,6 +363,12 @@ def r1_diagnostics(self):
         self.Y1s_untwisted = (self.Y1s *   cosangle  + self.Y1c * sinangle)
         self.Y1c_untwisted = (self.Y1s * (-sinangle) + self.Y1c * cosangle)
 
+    # Compute some derivatives for later
+    self.d_X1c_d_varphi = np.matmul(self.d_d_varphi, self.X1c)
+    self.d_X1s_d_varphi = np.matmul(self.d_d_varphi, self.X1s)
+    self.d_Y1s_d_varphi = np.matmul(self.d_d_varphi, self.Y1s)
+    self.d_Y1c_d_varphi = np.matmul(self.d_d_varphi, self.Y1c)
+
     ############################
     # COMPUTE ELLIPSE FEATURES #
     ############################
@@ -374,14 +380,12 @@ def r1_diagnostics(self):
     self.mean_elongation = np.sum(self.elongation * self.d_l_d_phi) / np.sum(self.d_l_d_phi)
     index = np.argmax(self.elongation)
     self.max_elongation = -fourier_minimum(-self.elongation)
+
+    ## Other ellipse features ##
     # Area of the ellipse in the plane perpendicular to the magnetic axis
     self.ellipse_area = np.pi * self.sG * self.Bbar / self.B0 + 2 * (self.X1c * self.Y1c - self.X1s * self.Y1s)
 
-    self.d_X1c_d_varphi = np.matmul(self.d_d_varphi, self.X1c)
-    self.d_X1s_d_varphi = np.matmul(self.d_d_varphi, self.X1s)
-    self.d_Y1s_d_varphi = np.matmul(self.d_d_varphi, self.Y1s)
-    self.d_Y1c_d_varphi = np.matmul(self.d_d_varphi, self.Y1c)
-
+    ## Compute the grad B tensor ##
     self.calculate_grad_B_tensor()
 
 
