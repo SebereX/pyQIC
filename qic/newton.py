@@ -8,7 +8,7 @@ import numpy as np
 #logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def newton(f, x0, jac, niter=20, tol=1e-13, nlinesearch=8):
+def newton(f, x0, jac, niter=20, tol=1e-16, nlinesearch=8):
     """
     Solve a system of nonlinear equations using Newton's method with a
     line search.

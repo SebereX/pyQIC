@@ -121,8 +121,8 @@ def calculate_grad_grad_B_tensor(self, two_ways=False):
     p2 = s.p2
 
     B20 = s.B20
-    B2s = s.B2s
-    B2c = s.B2c
+    B2s = s.B2s_array
+    B2c = s.B2c_array
 
     d_B0_d_varphi = np.matmul(s.d_d_varphi, B0)
 
@@ -466,16 +466,16 @@ def calculate_grad_grad_B_tensor(self, two_ways=False):
 
     # Element131
     grad_grad_B_alt[:,0,2,0]=(B0*B0*B0*B0*lprime*(2*Bbar*sG*d_B0_d_varphi*(iota_N0*X1c*Y1c + iota_N0*X1s*Y1s + Y1s*d_X1c_d_varphi - \
-    Y1c*d_X1s_d_varphi) + Bbar*sG*B0*lprime*torsion*(iota_N0*X1c*X1c + iota_N0*X1s*X1s - iota_N0*Y1c*Y1c - iota_N0*Y1s*Y1s + \
-    X1s*d_X1c_d_varphi - X1c*d_X1s_d_varphi - Y1s*d_Y1c_d_varphi + Y1c*d_Y1s_d_varphi) + B0**2 * (lprime*lprime*curvature*(-2*X2c*Y1c*Y1c -\
-    4*X2s*Y1c*Y1s + 2*X2c*Y1s*Y1s + 2*X20*(Y1c*Y1c + Y1s*Y1s) - 2*X1c*Y1c*Y20 - 2*X1s*Y1s*Y20 + 2*X1c*Y1c*Y2c - 2*X1s*Y1s*Y2c + \
-    2*X1s*Y1c*Y2s + 2*X1c*Y1s*Y2s + 3*X1s*X1s*Y1c*Y1c*curvature - 6*X1c*X1s*Y1c*Y1s*curvature + 3*X1c*X1c*Y1s*Y1s*curvature) - \
-    Y1s*Y1s*d_X1c_d_varphi*d_X1c_d_varphi + iota_N0*X1c*Y1c*Y1c*d_X1s_d_varphi + iota_N0*X1c*Y1s*Y1s*d_X1s_d_varphi + \
-    2*Y1c*Y1s*d_X1c_d_varphi*d_X1s_d_varphi - Y1c*Y1c*d_X1s_d_varphi**2 + iota_N0*X1c*X1c*Y1s*d_Y1c_d_varphi - \
-    X1c*Y1s*d_X1s_d_varphi*d_Y1c_d_varphi - iota_N0*X1c*X1c*Y1c*d_Y1s_d_varphi + X1c*Y1c*d_X1s_d_varphi*d_Y1s_d_varphi + \
-    iota_N0*X1s*X1s*(Y1s*d_Y1c_d_varphi - Y1c*d_Y1s_d_varphi) + X1c*Y1s*Y1s*d2_X1c_d_varphi2 - X1s * (Y1s*d_X1c_d_varphi*(iota_N0*Y1s - \
-    d_Y1c_d_varphi) + Y1c * (d_X1c_d_varphi*d_Y1s_d_varphi + Y1s*d2_X1c_d_varphi2) + Y1c*Y1c*(iota_N0*d_X1c_d_varphi - \
-    d2_X1s_d_varphi2)) - X1c*Y1c*Y1s*d2_X1s_d_varphi2)))/(Bbar**2*G0*G0*G0)
+        Y1c*d_X1s_d_varphi) + Bbar*sG*B0*lprime*torsion*(iota_N0*X1c*X1c + iota_N0*X1s*X1s - iota_N0*Y1c*Y1c - iota_N0*Y1s*Y1s + \
+        X1s*d_X1c_d_varphi - X1c*d_X1s_d_varphi - Y1s*d_Y1c_d_varphi + Y1c*d_Y1s_d_varphi) + B0**2 * (lprime*lprime*curvature*(-2*X2c*Y1c*Y1c -\
+        4*X2s*Y1c*Y1s + 2*X2c*Y1s*Y1s + 2*X20*(Y1c*Y1c + Y1s*Y1s) - 2*X1c*Y1c*Y20 - 2*X1s*Y1s*Y20 + 2*X1c*Y1c*Y2c - 2*X1s*Y1s*Y2c + \
+        2*X1s*Y1c*Y2s + 2*X1c*Y1s*Y2s + 3*X1s*X1s*Y1c*Y1c*curvature - 6*X1c*X1s*Y1c*Y1s*curvature + 3*X1c*X1c*Y1s*Y1s*curvature) - \
+        Y1s*Y1s*d_X1c_d_varphi*d_X1c_d_varphi + iota_N0*X1c*Y1c*Y1c*d_X1s_d_varphi + iota_N0*X1c*Y1s*Y1s*d_X1s_d_varphi + \
+        2*Y1c*Y1s*d_X1c_d_varphi*d_X1s_d_varphi - Y1c*Y1c*d_X1s_d_varphi**2 + iota_N0*X1c*X1c*Y1s*d_Y1c_d_varphi - \
+        X1c*Y1s*d_X1s_d_varphi*d_Y1c_d_varphi - iota_N0*X1c*X1c*Y1c*d_Y1s_d_varphi + X1c*Y1c*d_X1s_d_varphi*d_Y1s_d_varphi + \
+        iota_N0*X1s*X1s*(Y1s*d_Y1c_d_varphi - Y1c*d_Y1s_d_varphi) + X1c*Y1s*Y1s*d2_X1c_d_varphi2 - X1s * (Y1s*d_X1c_d_varphi*(iota_N0*Y1s - \
+        d_Y1c_d_varphi) + Y1c * (d_X1c_d_varphi*d_Y1s_d_varphi + Y1s*d2_X1c_d_varphi2) + Y1c*Y1c*(iota_N0*d_X1c_d_varphi - \
+        d2_X1s_d_varphi2)) - X1c*Y1c*Y1s*d2_X1s_d_varphi2)))/(Bbar**2*G0*G0*G0)
 
     # Element132
     grad_grad_B_alt[:,0,2,1]=(B0*B0*B0*B0*lprime*(Bbar*sG*d_B0_d_varphi*(2*iota_N0*Y1c*Y1c + Y1s * (2*iota_N0*Y1s + \
@@ -773,7 +773,7 @@ def grad_grad_B_tensor_cylindrical(self):
                             + grad_grad_B[:,2,2,0] * t[i] * t[j] * n[k] \
                             + grad_grad_B[:,2,2,1] * t[i] * t[j] * b[k] \
                             + grad_grad_B[:,2,2,2] * t[i] * t[j] * t[k]
-                        for i in range(3)] for j in range(3)] for k in range(3)])
+                        for k in range(3)] for j in range(3)] for i in range(3)])
     # self.grad_grad_B_tensor_cylindrical_array = np.reshape(self.grad_grad_B_tensor_cylindrical, 27 * self.nphi)
 
     # grad_grad_B_tensor_cylindrical = np.transpose(self.grad_grad_B,(1,2,3,0))

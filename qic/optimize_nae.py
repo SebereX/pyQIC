@@ -180,7 +180,7 @@ def optimise_params(stel, x_param_label, fun_opt = fun, verbose = 0, maxiter = 2
     # Initialise the residual history 
     res_history = []
     res_history.append(fun_opt(stel, extras))
-    
+    print(stel.order)
     # Optimisation (using scipy.optimize.minimize)
     if scale:
         # If scale, then limited optimisation relative to initial values

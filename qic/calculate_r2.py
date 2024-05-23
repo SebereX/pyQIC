@@ -73,10 +73,10 @@ def calculate_r2(self):
     if np.all(rhs_beta_0_equation == np.zeros((1,nphi))[0]):
         beta_0 = np.zeros((1,nphi))[0]
     else:
-        DMred = d_d_varphi[1:,1:]   # The differentiation matrix has a linearly dependent row, focus on submatrix
-        beta_0 = np.linalg.solve(DMred,rhs_beta_0_equation[1:])   # Invert differentiation matrix: as if first entry a zero, need to add it later
-        beta_0 = np.insert(beta_0,0,0)  # Fix to be zero at origin (add entry)
-        # beta_0 = np.linalg.solve(d_d_varphi, rhs_beta_0_equation)
+        # DMred = d_d_varphi[1:,1:]   # The differentiation matrix has a linearly dependent row, focus on submatrix
+        # beta_0 = np.linalg.solve(DMred,rhs_beta_0_equation[1:])   # Invert differentiation matrix: as if first entry a zero, need to add it later
+        # beta_0 = np.insert(beta_0,0,0)  # Fix to be zero at origin (add entry)
+        beta_0 = np.linalg.solve(d_d_varphi + self.interpolateTo0, rhs_beta_0_equation)
         # beta_0 = beta_0 - beta_0[0] # Fix to be zero at origin
 
     ## Calculate beta_1
@@ -104,6 +104,7 @@ def calculate_r2(self):
     beta_1c = solution_beta_1[0:nphi]
     beta_1s = solution_beta_1[nphi:2 * nphi]
 
+    # In fact, we expect this when close to an integer
     if np.abs(iota_N) < 1e-8:
         print('Warning: |iota_N| is very small so O(r^2) solve will be poorly conditioned. iota_N=', iota_N)
 
@@ -326,7 +327,7 @@ def calculate_r2(self):
 
     # B20 = B0 * (curvature * X20 - B0_over_abs_G0 * np.matmul(d_d_varphi,Z20) + (0.5) * etabar * etabar - mu0 * p2 / (B0 * B0) \
     #             - 0.25 * B0_over_abs_G0 * B0_over_abs_G0 * (qc * qc + qs * qs + rc * rc + rs * rs))
-    B20 = B0 * (curvature * X20 - B0_over_abs_G0 * np.matmul(d_d_varphi, Z20)) + (3/(4*B0)) * (B1c*B1c + B1s*B1s)\
+    B20 = B0 * (curvature * X20 - B0_over_abs_G0 * np.matmul(d_d_varphi, Z20)) + 0.75/B0 * (B1c*B1c + B1s*B1s)\
         + (B0/G0)*(G2 + iota * I2) - 0.25 * B0 * curvature * curvature * (X1c*X1c + X1s*X1s)\
         - 0.25 * B0_over_abs_G0 * B0_over_abs_G0 * (qc * qc + qs * qs + rc * rc + rs * rs) * B0
  

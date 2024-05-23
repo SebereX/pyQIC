@@ -35,123 +35,227 @@ class Qic():
     from .optimize_nae import optimise_params, min_geo_qi_consistency
     from .to_vmec import to_vmec
     from .util import B_mag
+    from .input_structure import evaluate_input_on_grid
     
-    def __init__(self, rc, zs, rs=[], zc=[], nfp=1, etabar=1., sigma0=0., B0=1.,
-                 B0_vals=[], B0_svals=[], d_cvals=[], d_svals=[], alpha_cvals=[0.], alpha_svals=[0.], phi_shift=0,
-                 omn = False, omn_method='buffer', k_buffer=1, p_buffer=2, delta  = np.pi/5, k_second_order_SS = 0.0, I2=0., sG=1, spsi=1, nphi=31,
-                 B2s=0., B2c=0., B2s_cvals=[], B2s_svals=[], B2c_cvals=[], B2c_svals=[], p2=0., order="r1", d_over_curvature=0, d_over_curvature_cvals = [], d_over_curvature_spline = []):
+    def __init__(self, 
+                 omn = True, order = "r1",
+                 nphi = 31, phi_shift = 1/3.0, nfp=1,
+                 frenet = False, axis_complete = True,
+                 Raxis = {"type": 'fourier', "input_value": {"cos": [1.0, 0.1], "sin": []}},
+                 Zaxis = {"type": 'fourier', "input_value": {"cos": [], "sin": [0.0, 0.05]}},
+                 curvature = None, torsion = None, ell = None, varphi = None, helicity = None,
+                 B0 = {"type": 'fourier', "input_value": {"cos": [1.0, 0.1], "sin": []}},
+                 sG=1, spsi=1,
+                 d_over_curvature = {"type": 'scalar', "input_value": 0.1}, d =  {"type": 'scalar', "input_value": 1.0}, 
+                 alpha = None, omn_buffer = {"omn_method": 'buffer', "k_buffer": 1, "p_buffer": 2, "delta": np.pi/5},
+                 sigma0=0., 
+                 I2=0., p2=0.,
+                 B2s = 0.0, B2c = 0.0,
+                 X2s = {"type": 'scalar', "input_value": 0.0}, X2c = {"type": 'scalar', "input_value": 0.0}):
         """
         Create a near-axis stellarator.
         """
-        # First, force {rc, zs, rs, zc} to have the same length, for
-        # simplicity.
-        nfourier = np.max([len(rc), len(zs), len(rs), len(zc)])
-        self.nfourier = nfourier
-        self.rc = np.zeros(nfourier)
-        self.zs = np.zeros(nfourier)
-        self.rs = np.zeros(nfourier)
-        self.zc = np.zeros(nfourier)
-        self.rc[:len(rc)] = rc
-        self.zs[:len(zs)] = zs
-        self.rs[:len(rs)] = rs
-        self.zc[:len(zc)] = zc
-
-        # Solve for omnigenity
+        #####################
+        # TYPE OF NEAR-AXIS #
+        #####################
+        # Check whether the near-axis construction is for a QI field (omn = True) or QS one (omn = False)
         self.omn = omn
-        self.delta  = min(abs(delta),0.95*np.pi/nfp)
-        self.omn_method = omn_method
-        self.k_buffer = k_buffer
-        self.p_buffer = p_buffer
-        self.k_second_order_SS = k_second_order_SS
-        self.d_over_curvature = d_over_curvature
-        self.d_over_curvature_cvals = d_over_curvature_cvals
-        self.d_over_curvature_spline = d_over_curvature_spline
+        # Order to which near-axis is to be computed
+        self.order = order
 
-        # Force nphi to be odd:
-        if np.mod(nphi, 2) == 0:
-            nphi += 1
+        #####################
+        # GRID CONSTRUCTION #
+        #####################
+        # Number of field periods
+        self.nfp = nfp
 
+        # Force nphi to be odd; if frenet = True is specified override this, as the grid for varphi is provided externally as well
+        # and one should give preference to that
+        if not frenet:
+            if np.mod(nphi, 2) == 0:
+                nphi += 1
+        self.nphi = nphi
+
+        # Make phi grid
+        phi = np.linspace(0, 2 * np.pi / nfp, nphi, endpoint=False)
+        # Define grid step
+        self.d_phi = phi[1] - phi[0]
+
+        # Consider shift of the grid to potentially avoid dividing by zero at points of vanishing curvature
+        if omn==True:
+            self.phi_shift = phi_shift
+            if phi_shift==0:
+                raise Warning('phi_shift = 0 may lead to problems wherever the curvature vanishes. It is recommended to use 1/3. ')
+            # Define shifted array
+            self.phi = phi + self.phi_shift*self.d_phi
+
+        ###################
+        # AXIS PARAMETERS #
+        ###################
+        # Flag for Frenet or cylindrical description of axis
+        self.frenet = frenet
+
+        # If frenet = False, then usual cylindrical description of the axis
+        if not frenet:
+            # Complete axis to enforce vanishing curvature
+            if axis_complete == True and Raxis["type"] == 'fourier':
+                self.axis_complete = True
+            else:
+                self.axis_complete = False
+
+            # Read the input R and Z axis parameters 
+            self.Raxis = Raxis
+            self.Zaxis = Zaxis
+             
+            self.helicity_in = helicity
+                     # First, force {rc, zs, rs, zc} to have the same length, for
+        # simplicity.
+            # nfourier = np.max([len(rc), len(zs), len(rs), len(zc)])
+            # self.nfourier = nfourier
+            # self.rc = np.zeros(nfourier)
+            # self.zs = np.zeros(nfourier)
+            # self.rs = np.zeros(nfourier)
+            # self.zc = np.zeros(nfourier)
+            # self.rc[:len(rc)] = rc
+            # self.zs[:len(zs)] = zs
+            # self.rs[:len(rs)] = rs
+            # self.zc[:len(zc)] = zc
+        else:
+            # In Frenet mode, the inputs are curvature, torsion and ell, all in the varphi (Boozer phi) coordinate
+            self.curvature_in = curvature
+            self.torsion_in = torsion
+            self.ell_in = ell
+            self.varphi = varphi
+
+        ##########################
+        # MAGNETIC FIELD ON AXIS #
+        ##########################
+        # Read B0 as an input
+        if isinstance(B0, dict):
+            self.B0_in = B0
+        else:
+            # TO DO: I could use a translation in case an array or scalar is provide. 
+            raise KeyError('Please provide B0 as a dictionary.')
+
+        # If QS, make sure it is a scalar
+        if omn == False:
+            if not (B0["type"] == 'scalar'):
+                raise ValueError('Input B0 is not a scalar as it should for a QS field.')
+            self.B0 = B0["input_value"]
+        else:
+            # If QI, evaluate B0 for now on the phi grid and store in B0
+            self.B0 = self.evaluate_input_on_grid(B0, self.phi)
+
+            # Define the well depth
+            self.B0_well_depth = 0.5 * (self.B0.max() - self.B0.min())
+
+        ####################
+        # SIGN DEFINITIONS #
+        ####################
+        # Check they are only signs
         if sG != 1 and sG != -1:
             raise ValueError('sG must be +1 or -1')
         
         if spsi != 1 and spsi != -1:
             raise ValueError('spsi must be +1 or -1')
-
-        self.nfp = nfp
-        self.etabar = etabar
-        self.sigma0 = sigma0
-        phi = np.linspace(0, 2 * np.pi / nfp, nphi, endpoint=False)
-        self.d_phi = phi[1] - phi[0]
-        if omn==True and phi_shift==0:
-            phi_shift=1/3
-        self.phi_shift = phi_shift
-        self.phi = phi + self.phi_shift*self.d_phi
-        if len(B0_vals)==0:
-            self.B0_vals = [B0]
-            self.B0_well_depth = 0.0
-        else:
-            self.B0_vals = B0_vals
-            self.B0_well_depth = B0_vals[1]
-        self.B0 =  np.array(sum([self.B0_vals[i]*np.cos(nfp*i*self.phi) for i in range(len(self.B0_vals))]))
-        self.B0_svals = B0_svals
-        self.B0 += np.array(sum([self.B0_svals[i]*np.sin(nfp*i*self.phi) for i in range(len(self.B0_svals))]))
-        if len(d_cvals)==0 and len(d_svals) == 0 and len(d_over_curvature_cvals) == 0 and len(d_over_curvature_spline) == 0 and d_over_curvature == 0:
-            self.d_cvals = [etabar]
-            self.d_svals = d_svals
-        else:
-            self.d_cvals = d_cvals
-            self.d_svals = d_svals
-            if self.d_cvals == []:
-                self.etabar = 0.0
-                self.d_cvals = [0.0]
-            else:
-                self.etabar = d_cvals[0]
-        if len(d_over_curvature_cvals) == 0 and len(d_over_curvature_spline) == 0 and not d_over_curvature == 0:
-            self.d_over_curvature_cvals == [d_over_curvature]
-        if not len(d_over_curvature_cvals) == 0 and not len(d_over_curvature_spline) == 0 and not d_over_curvature == 0:
-            raise ValueError('Only one of d_over_curvature_cvals, d_over_curvature_spline or d_over_curvature should be specified.')
-        self.d = np.array(sum([self.d_cvals[i]*np.cos(nfp*i*self.phi) for i in range(len(self.d_cvals))]))
-        self.d = self.d + np.array(sum([self.d_svals[i]*np.sin(nfp*i*self.phi) for i in range(len(self.d_svals))]))
-        self.alpha_cvals = alpha_cvals
-        self.alpha_svals = alpha_svals
-        self.alpha = np.array(sum([self.alpha_cvals[i]*np.cos(nfp*i*self.phi) for i in range(len(self.alpha_cvals))]))
-        self.alpha = self.alpha + np.array(sum([self.alpha_svals[i]*np.sin(nfp*i*self.phi) for i in range(len(self.alpha_svals))]))
-        self.B1s = self.B0 * self.d * np.sin(self.alpha)
-        self.B1c = self.B0 * self.d * np.cos(self.alpha)
-        self.I2 = I2
+        
+        # Store signs
         self.sG = sG
         self.spsi = spsi
-        self.nphi = nphi
-        if len(B2c_cvals)==0 and len(B2c_svals) == 0:
-            self.B2c_cvals = [B2c]
-            self.B2c_svals = B2c_svals
-            self.B2c = B2c
-        else:
-            self.B2c_cvals = B2c_cvals
-            self.B2c_svals = B2c_svals
-            if len(self.B2c_cvals) == 0:
-                self.B2c = 0
-                self.B2c_cvals = [0]
+
+        #################
+        # FIRST ORDER B #
+        #################
+        # Distinguish between QS and QI
+        if not omn:
+            # If QS, define etabar from d
+            if d["type"] == 'scalar':
+                self.etabar = d["input_value"]
+                self.d_in = d
+                self.d = self.evaluate_input_on_grid(d, self.phi)
             else:
-                self.B2c = B2c_cvals[0]
-        if len(B2s_cvals)==0 and len(B2s_svals) == 0:
-            self.B2s_cvals = [B2s]
-            self.B2s_svals = B2s_svals
-            self.B2s = B2s
+                raise ValueError('Please provide a value for etabar in d as a scalar.')
+        # If it is QI
         else:
-            self.B2s_cvals = B2s_cvals
-            self.B2s_svals = B2s_svals
-            if len(self.B2s_cvals) == 0:
-                self.B2s = 0
-                self.B2s_cvals = [0.0]
+            # If d_over_curvature and d are both provided then use both (the total d will be the sum of both) 
+            if isinstance(d_over_curvature, dict):
+                self.d_over_curvature_in = d_over_curvature
             else:
-                self.B2s = B2s_cvals[0]
+                self.d_over_curvature_in = None
+
+            if isinstance(d, dict):
+                self.d_in = d
+                self.d = self.evaluate_input_on_grid(d, self.phi) # Temporary value
+            else:
+                self.d_in = None
+            if self.d_over_curvature_in == None:
+                if self.d_in == None:
+                    raise ValueError('The first order B1 field is not specified; please provide d or d_over_curvature as dictionaries.')
+                else:
+                    raise Warning("Careful with providing d as an input for it must match curvature.")
+                    
+        # Define the function alpha (or buffer regions if needed) for QI
+        if self.omn:
+            # If alpha is provided as an input
+            if isinstance(alpha, dict):
+                self.alpha_in = alpha
+                self.alpha = self.evaluate_input_on_grid(alpha, self.phi)
+            # If alpha is not provided, then we need details of the buffer construction
+            else:
+                self.alpha_in = None
+                self.buffer_details = omn_buffer
+                delta = omn_buffer["delta"]
+                self.delta = delta # min(abs(delta),0.95*np.pi/nfp)
+                # self.omn_method = omn_method
+                # self.k_buffer = k_buffer
+                # self.p_buffer = p_buffer
+                # self.k_second_order_SS = k_second_order_SS
+
+        # Need to check if necessary or not
+        # self.B1s = self.B0 * self.d * np.sin(self.alpha)
+        # self.B1c = self.B0 * self.d * np.cos(self.alpha)
+
+        #######################
+        # FIRST ORDER SHAPING #
+        #######################
+        # Value for σ(0), whose non-zero value braks stellarator symmetry
+        self.sigma0 = sigma0
+
+        #######################
+        # SECOND ORDER INPUTS #
+        #######################
+        # Equilibrium scalars
+        self.I2 = I2
         self.p2 = p2
-        self.order = order
+
+        # Inputs of B2 or X2 depending on whether QI or QS is considered
+        if not omn:
+            # If QS, we consider the inputs to be B2 (which are scalars and not dict)
+            # For now define these as _in, to see if I can use B2s and B2c for both cases as outputs
+            self.B2c_in = B2c
+            self.B2s_in = B2s
+            self.X2s_in = None
+            self.X2c_in = None
+        else:
+            # If QI, the inputs should be X2s and X2c, and we shall ignore the input values for B2
+            self.X2s_in = X2s
+            self.X2c_in = X2c
+            self.B2c_in = None
+            self.B2s_in = None
+
+        ##########
+        # OTHERS #
+        ##########
         self.min_R0_threshold = 0.3
         self.min_Z0_threshold = 0.3
+
+        ###########################
+        # COMPLETE INITIALISATION #
+        ###########################
+        # Create names for optimisation
         self._set_names()
-        self.calculate()
+        # Run calculations
+        # self.calculate()
 
     def change_nfourier(self, nfourier_new):
         """
@@ -182,7 +286,7 @@ class Qic():
         """
         Driver for the main calculations.
         """
-        self.init_axis()
+        self.init_axis(omn_complete = self.axis_complete)
         self.solve_sigma_equation()
         self.r1_diagnostics()
         if self.order != 'r1':
@@ -195,99 +299,204 @@ class Qic():
         Return a 1D numpy vector of all possible optimizable
         degrees-of-freedom, for simsopt.
         """
-        dofs = np.concatenate((self.rc, self.zs, self.rs, self.zc,
-                               np.array([self.etabar, self.sigma0, self.B2s, self.B2c, self.p2, self.I2, self.delta]),
-                               self.B0_vals, self.B0_svals, self.d_cvals, self.d_svals, self.alpha_cvals, self.alpha_svals,
-                               self.B2c_cvals, self.B2c_svals, self.B2s_cvals, self.B2s_svals, self.d_over_curvature_cvals, self.d_over_curvature_spline, np.array([self.k_second_order_SS,self.d_over_curvature])))
+        def select_contents_inputs(input_dict):
+            if isinstance(input_dict, dict):
+                if input_dict["type"] == 'scalar':
+                    val = [input_dict["input_value"]]
+                elif input_dict["type"] == 'fourier':
+                    val = input_dict["input_value"]["cos"]
+                    val += input_dict["input_value"]["sin"]
+                else:
+                    val = input_dict["input_value"]
+            else:
+                # In case None or otherwise, do not add anything
+                val = []
+
+            return np.array(val)
+        
+        dofs = np.array([])
+        if self.frenet:
+            # varphi is left fixed, but curvature, torsion and ell may change. Note that the curve may not close!
+            dofs = np.concatenate(dofs, select_contents_inputs(self.curvature_in))
+            dofs = np.concatenate(dofs, select_contents_inputs(self.torsion_in))
+            dofs = np.concatenate(dofs, select_contents_inputs(self.ell_in))
+        else:
+            dofs = np.concatenate(dofs, select_contents_inputs(self.Raxis))
+            dofs = np.concatenate(dofs, select_contents_inputs(self.Zaxis))
+
+        dofs = np.concatenate(dofs, select_contents_inputs(self.B0_in))
+        dofs = np.concatenate(dofs, select_contents_inputs(self.d_in))
+        dofs = np.concatenate(dofs, select_contents_inputs(self.d_over_curvature_in))
+        dofs = np.concatenate(dofs, select_contents_inputs(self.alpha_in))
+        if not self.omn:
+            dofs = np.concatenate(dofs, np.array([self.B2c_in, self.B2s_in]))
+        else:
+            dofs = np.concatenate(dofs, select_contents_inputs(self.X2c_in))
+            dofs = np.concatenate(dofs, select_contents_inputs(self.X2s_in))
+        dofs = np.concatenate(dofs, np.array([self.sigma0, self.p2, self.I2]))
+        if not isinstance(self.alpha_in, dict):
+            dofs = np.concatenate(dofs, np.array([self.delta]))
+
         assert dofs.ndim == 1 and dofs.size != 1
+        assert dofs.size == len(self.names)
         return dofs
 
-    def set_dofs(self, x):
+    def set_dofs(self, x, re_evaluate = 'all'):
         """
         For interaction with simsopt, set the optimizable degrees of
         freedom from a 1D numpy vector.
         """
-        assert len(x) == self.nfourier * 4 + 7 + len(self.B0_vals) + len(self.B0_svals) + len(self.d_cvals) + len(self.d_svals)\
-                       + len(self.alpha_cvals) + len(self.alpha_svals)\
-                       + len(self.B2c_cvals) + len(self.B2c_svals) + len(self.B2s_cvals) + len(self.B2s_svals)\
-                       + len(self.d_over_curvature_cvals) + len(self.d_over_curvature_spline) + 2
-        self.rc = x[self.nfourier * 0 : self.nfourier * 1]
-        self.zs = x[self.nfourier * 1 : self.nfourier * 2]
-        self.rs = x[self.nfourier * 2 : self.nfourier * 3]
-        self.zc = x[self.nfourier * 3 : self.nfourier * 4]
-        self.etabar = x[self.nfourier * 4 + 0]
-        self.sigma0 = x[self.nfourier * 4 + 1]
-        self.B2s = x[self.nfourier * 4 + 2]
-        self.B2c = x[self.nfourier * 4 + 3]
-        self.p2 = x[self.nfourier * 4 + 4]
-        self.I2 = x[self.nfourier * 4 + 5]
-        self.delta = x[self.nfourier * 4 + 6]
-        sz_params = self.nfourier * 4 + 6
-        self.B0_vals  = x[sz_params + 1 : sz_params + len(self.B0_vals) + 1]
-        sz_params += len(self.B0_vals)
-        self.B0_svals = x[sz_params + 1 : sz_params + len(self.B0_svals) + 1]
-        sz_params += len(self.B0_svals)
-        self.d_cvals  = x[sz_params + 1 : sz_params + len(self.d_cvals) + 1]
-        sz_params += len(self.d_cvals)
-        self.d_svals  = x[sz_params + 1 : sz_params + len(self.d_svals) + 1]
-        sz_params += len(self.d_svals)
-        self.alpha_cvals = x[sz_params + 1 : sz_params + len(self.alpha_cvals) + 1]
-        sz_params += len(self.alpha_cvals)
-        self.alpha_svals = x[sz_params + 1 : sz_params + len(self.alpha_svals) + 1]
-        sz_params += len(self.alpha_svals)
-        self.B2c_cvals   = x[sz_params + 1 : sz_params + len(self.B2c_cvals) + 1]
-        sz_params += len(self.B2c_cvals)
-        self.B2c_svals   = x[sz_params + 1 : sz_params + len(self.B2c_svals) + 1]
-        sz_params += len(self.B2c_svals)
-        self.B2s_cvals   = x[sz_params + 1 : sz_params + len(self.B2s_cvals) + 1]
-        sz_params += len(self.B2s_cvals)
-        self.B2s_svals               = x[sz_params + 1 : sz_params + len(self.B2s_svals) + 1]
-        sz_params += len(self.B2s_svals)
-        self.d_over_curvature_cvals  = x[sz_params + 1 : sz_params + len(self.d_over_curvature_cvals) + 1]
-        sz_params += len(self.d_over_curvature_cvals)
-        self.d_over_curvature_spline = x[sz_params + 1 : sz_params + len(self.d_over_curvature_spline) + 1]
-        sz_params += len(self.d_over_curvature_spline)
-        self.k_second_order_SS       = x[sz_params + 1]
-        sz_params += 1
-        self.d_over_curvature        = x[sz_params + 1]
-        # Set new B0, d, alpha, B1 and B2
-        if len(self.B0_vals)>1:
-            self.B0_well_depth = self.B0_vals[1]
-        self.B0 = sum([self.B0_vals[i]*np.cos(self.nfp*i*self.phi) for i in range(len(self.B0_vals))])
-        self.B0_svals = self.B0_svals
-        self.B0 += np.array(sum([self.B0_svals[i]*np.sin(self.nfp*i*self.phi) for i in range(len(self.B0_svals))]))
-        self.d  = np.array(sum([self.d_cvals[i]*np.cos(self.nfp*i*self.phi) for i in range(len(self.d_cvals))]))
-        self.d += np.array(sum([self.d_svals[i]*np.sin(self.nfp*i*self.phi) for i in range(len(self.d_svals))]))
-        self.alpha  = np.array(sum([self.alpha_cvals[i]*np.cos(self.nfp*i*self.phi) for i in range(len(self.alpha_cvals))]))
-        self.alpha += np.array(sum([self.alpha_svals[i]*np.sin(self.nfp*i*self.phi) for i in range(len(self.alpha_svals))]))
-        self.B1s = self.B0 * self.d * np.sin(self.alpha)
-        self.B1c = self.B0 * self.d * np.cos(self.alpha)
-        self.calculate()
+        assert len(x) == len(self.names)
+
+        def set_input(input_dict, x, init):
+            if isinstance(input_dict, dict):
+                if input_dict["type"] == 'scalar':
+                    input_dict["input_value"] = x[init]
+                    len_input = 1
+                elif input_dict["type"] == 'fourier':
+                    length_cos = len(input_dict["input_value"]["cos"])
+                    input_dict["input_value"]["cos"] = x[init:init+length_cos]
+                    length_sin = len(input_dict["input_value"]["sin"])
+                    input_dict["input_value"]["sin"] = x[init+length_cos:init+length_cos+length_sin]
+                    len_input = length_cos + length_sin
+                else:
+                    len_input = len(input_dict["input_value"])
+                    input_dict["input_value"] = x[init:init+len_input]
+            else:
+                # In case None or otherwise, do not add anything
+                len_input = 0
+            return init + len_input
+        
+        ind = 0
+        if self.frenet:
+            # varphi is left fixed, but curvature, torsion and ell may change. Note that the curve may not close!
+            ind = set_input(self.curvature_in, x, ind)
+            ind = set_input(self.torsion_in, x, ind)
+            ind = set_input(self.ell_in, x, ind)
+        else:
+            ind = set_input(self.Raxis, x, ind)
+            ind = set_input(self.Zaxis, x, ind)
+        
+        ind = set_input(self.B0_in, x, ind)
+        ind = set_input(self.d_in, x, ind)
+        ind = set_input(self.d_over_curvature_in, x, ind)
+        ind = set_input(self.alpha_in, x, ind)
+        if not self.omn:
+            self.B2c_in = x[ind]
+            self.B2s_in = x[ind+1]
+            ind = ind + 2
+        else:
+            ind = set_input(self.X2c_in, x, ind)
+            ind = set_input(self.X2s_in, x, ind)
+
+        self.sigma0, self.p2, self.I2 = x[ind:ind+3]
+        ind = ind+3
+
+        if not isinstance(self.alpha_in, dict):
+            self.delta = x[ind]
+            self.buffer_details["delta"] = x[ind]
+            ind = ind+1
+
+        assert ind == len(self.names)
+        
+        ##########################
+        # SET NEW DERIVED VALUES #
+        ##########################
+        # Not sure if this is needed or legacy
+        # Set B0
+        if self.omn == False:
+            self.B0 = self.B0_in["input_value"]
+        else:
+            self.B0 = self.evaluate_input_on_grid(self.B0_in, self.phi)
+            # Define the well depth
+            self.B0_well_depth = 0.5 * (self.B0.max() - self.B0.min())
+
+        # Set d
+        if not self.omn:
+            # If QS, define etabar from d
+            self.etabar = self.d_in["input_value"]
+            self.d = self.evaluate_input_on_grid(self.d_in, self.phi)
+        else:
+            # If it is QI
+            if isinstance(self.d_in, dict):
+                self.d = self.evaluate_input_on_grid(self.d_in, self.phi)
+        
+        if self.omn:
+            # If alpha is provided as an input
+            if isinstance(self.alpha_in, dict):
+                self.alpha = self.evaluate_input_on_grid(self.alpha_in, self.phi)
+
+        # Unsure if needed
+        # self.B1s = self.B0 * self.d * np.sin(self.alpha)
+        # self.B1c = self.B0 * self.d * np.cos(self.alpha)
+
+        # Compute the quantities thereof, regardless of the properties changed (this could be unnecesaily cumbersome)
+        if re_evaluate == 'all' or re_evaluate == 'r1':
+            self.calculate()
+        elif re_evaluate == 'r2':
+            self.calculate_r2()
+            if self.order == 'r3':
+                self.calculate_r3()
+        elif re_evaluate == 'r3':
+            self.calculate_r3()
+        else:
+            raise NameError("The order specified for re_evaluate in set_dofs is not recognised: it must be one of all, r1, r2, or r3")
+
         logger.info('set_dofs called with x={}. Now iota={}, elongation={}'.format(x, self.iota, self.max_elongation))
         
     def _set_names(self):
         """
         For simsopt, sets the list of names for each degree of freedom.
         """
+        def add_input_string(input_dict, name_str):
+            """
+            Different addition of parameters depending on the type of input
+            """
+            if isinstance(input_dict, dict):
+                if input_dict["type"] == 'scalar':
+                    new_str = [name_str]
+                elif input_dict["type"] == 'fourier':
+                    length_cos = len(input_dict["input_value"]["cos"])
+                    cos_str = [name_str + 'c({})'.format(j) for j in range(length_cos)]
+                    length_sin = len(input_dict["input_value"]["sin"])
+                    sin_str = [name_str + 's({})'.format(j) for j in range(length_sin)]
+                    new_str = cos_str + sin_str
+                else:
+                    length_array = len(input_dict["input_value"])
+                    new_str = [name_str + '({})'.format(j) for j in range(length_array)]
+            else:
+                # In case None or otherwise, do not add anything
+                new_str = []
+
+            return new_str
+
         names = []
-        names += ['rc({})'.format(j) for j in range(self.nfourier)]
-        names += ['zs({})'.format(j) for j in range(self.nfourier)]
-        names += ['rs({})'.format(j) for j in range(self.nfourier)]
-        names += ['zc({})'.format(j) for j in range(self.nfourier)]
-        names += ['etabar', 'sigma0', 'B2s', 'B2c', 'p2', 'I2', 'delta']
-        names += ['B0({})'.format(j) for j in range(len(self.B0_vals))]
-        names += ['B0s({})'.format(j) for j in range(len(self.B0_svals))]
-        names += ['dc({})'.format(j) for j in range(len(self.d_cvals))]
-        names += ['ds({})'.format(j) for j in range(len(self.d_svals))]
-        names += ['alphac({})'.format(j) for j in range(len(self.alpha_cvals))]
-        names += ['alphas({})'.format(j) for j in range(len(self.alpha_svals))]
-        names += ['B2cc({})'.format(j) for j in range(len(self.B2c_cvals))]
-        names += ['B2cs({})'.format(j) for j in range(len(self.B2c_svals))]
-        names += ['B2sc({})'.format(j) for j in range(len(self.B2s_cvals))]
-        names += ['B2ss({})'.format(j) for j in range(len(self.B2s_svals))]
-        names += ['d_over_curvaturec({})'.format(j) for j in range(len(self.d_over_curvature_cvals))]
-        names += ['d_over_curvature_spline({})'.format(j) for j in range(len(self.d_over_curvature_spline))]
-        names += ['k_second_order_SS','d_over_curvature']
+        if self.frenet:
+            # varphi is left fixed, but curvature, torsion and ell may change. Note that the curve may not close!
+            names += add_input_string(self.curvature_in, 'curv')
+            names += add_input_string(self.torsion_in, 'tors')
+            names += add_input_string(self.ell_in, 'ell')
+        else:
+            names += add_input_string(self.Raxis, 'r')
+            names += add_input_string(self.Zaxis, 'z')
+            # names += ['rc({})'.format(j) for j in range(self.nfourier)]
+            # names += ['zs({})'.format(j) for j in range(self.nfourier)]
+            # names += ['rs({})'.format(j) for j in range(self.nfourier)]
+            # names += ['zc({})'.format(j) for j in range(self.nfourier)]
+        
+        names += add_input_string(self.B0_in, 'B0')
+        names += add_input_string(self.d_in, 'd')
+        names += add_input_string(self.d_over_curvature_in, 'd_over_curvature')
+        names += add_input_string(self.alpha_in, 'alpha')
+        if not self.omn:
+            names += ['B2c','B2s']
+        else:
+            names += add_input_string(self.X2c_in, 'X2c')
+            names += add_input_string(self.X2s_in, 'X2s')
+        names += ['sigma0', 'p2', 'I2']
+        if not isinstance(self.alpha_in, dict):
+            names += ['delta']
+
         self.names = names
 
     @classmethod
@@ -322,6 +531,7 @@ class Qic():
 
           q = qic.Qic.from_paper('r1 section 5.1', etabar=1.1)
         """
+        default_buffer_dict = {"omn_method": 'buffer', "k_buffer": 1, "p_buffer": 2, "delta": np.pi/5}
 
         def add_default_args(kwargs_old, **kwargs_new):
             """
@@ -336,267 +546,388 @@ class Qic():
                     
         if name == "r1 section 5.1":
             """ The configuration from Landreman, Sengupta, Plunk (2019), section 5.1 """
-            add_default_args(kwargs, rc=[1, 0.045], zs=[0, -0.045], nfp=3, etabar=-0.9)
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [1, 0.045], "sin": []}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [], "sin": [0, -0.045]}}
+            d = {"type": 'scalar',
+                     "input_value": -0.9}
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=3, d = d)
                 
         elif name == "r1 section 5.2":
             """ The configuration from Landreman, Sengupta, Plunk (2019), section 5.2 """
-            add_default_args(kwargs, rc=[1, 0.265], zs=[0, -0.21], nfp=4, etabar=-2.25)
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [1, 0.265], "sin": []}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [], "sin": [0, -0.21]}}
+            d = {"type": 'scalar',
+                     "input_value": -2.25}
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=4, d = d)
                 
         elif name == "r1 section 5.3":
             """ The configuration from Landreman, Sengupta, Plunk (2019), section 5.3 """
-            add_default_args(kwargs, rc=[1, 0.042], zs=[0, -0.042], zc=[0, -0.025], nfp=3, etabar=-1.1, sigma0=-0.6)
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [1, 0.042], "sin": []}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [0, -0.025], "sin": [0, -0.042]}}
+            d = {"type": 'scalar',
+                     "input_value": -1.1}
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=3, d = d, sigma0=-0.6)
                 
         elif name == "r2 section 5.1" or name == '5.1' or name == 1:
             """ The configuration from Landreman & Sengupta (2019), section 5.1 """
-            add_default_args(kwargs, rc=[1, 0.155, 0.0102], zs=[0, 0.154, 0.0111], nfp=2, etabar=0.64, order='r3', B2c=-0.00322)
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [1, 0.155, 0.0102], "sin": []}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [], "sin": [0, 0.154, 0.0111]}}
+            d = {"type": 'scalar',
+                     "input_value": 0.64}
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=2, d = d, B2c=-0.00322, order='r3')
             
         elif name == "r2 section 5.2" or name == '5.2' or name == 2:
             """ The configuration from Landreman & Sengupta (2019), section 5.2 """
-            add_default_args(kwargs, rc=[1, 0.173, 0.0168, 0.00101], zs=[0, 0.159, 0.0165, 0.000985], nfp=2, etabar=0.632, order='r3', B2c=-0.158)
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [1, 0.173, 0.0168, 0.00101], "sin": []}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [], "sin": [0, 0.159, 0.0165, 0.000985]}}
+            d = {"type": 'scalar',
+                     "input_value": 0.632}
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=2, d = d, B2c = -0.158, order='r3')
                              
         elif name == "r2 section 5.3" or name == '5.3' or name == 3:
             """ The configuration from Landreman & Sengupta (2019), section 5.3 """
-            add_default_args(kwargs, rc=[1, 0.09], zs=[0, -0.09], nfp=2, etabar=0.95, I2=0.9, order='r3', B2c=-0.7, p2=-600000.)
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [1, 0.09], "sin": []}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [], "sin": [0, -0.09]}}
+            d = {"type": 'scalar',
+                     "input_value": 0.95}
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=2, d = d, B2c = -0.7, I2=0.9, p2=-600000., order='r3')
                              
         elif name == "r2 section 5.4" or name == '5.4' or name == 4:
             """ The configuration from Landreman & Sengupta (2019), section 5.4 """
-            add_default_args(kwargs, rc=[1, 0.17, 0.01804, 0.001409, 5.877e-05],
-                       zs=[0, 0.1581, 0.01820, 0.001548, 7.772e-05], nfp=4, etabar=1.569, order='r3', B2c=0.1348)
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [1, 0.17, 0.01804, 0.001409, 5.877e-05], "sin": []}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [], "sin": [0, 0.1581, 0.01820, 0.001548, 7.772e-05]}}
+            d = {"type": 'scalar',
+                     "input_value": 1.569}
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=4, d = d, B2c = 0.1348, order='r3')
                              
         elif name == "r2 section 5.5" or name == '5.5' or name == 5:
             """ The configuration from Landreman & Sengupta (2019), section 5.5 """
-            add_default_args(kwargs, rc=[1, 0.3], zs=[0, 0.3], nfp=5, etabar=2.5, sigma0=0.3, I2=1.6, order='r3', B2c=1., B2s=3., p2=-0.5e7)
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [1, 0.3], "sin": []}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [], "sin": [0, 0.3]}}
+            d = {"type": 'scalar',
+                     "input_value": 2.5}
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=5, d = d, sigma0=0.3, B2c = 1., I2=1.6, \
+                             B2s=3., p2=-0.5e7, order='r3')        
+        
         elif name == "QI" or name == "QI r1 Plunk" or name == "QI Plunk":
             """ The configuration from Plunk, Landreman & Helander (2019), section 8.2 """
-            rc      = [ 1.0, 0.0,-0.2 ]
-            zs      = [ 0.0, 0.0, 0.35]
-            B0_vals = [ 1.0, 0.1 ]
-            d_svals = [ 0.0, 1.08, 0.26, 0.46]
-            delta   = 0.1 * 2*np.pi
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [ 1.0, 0.0,-0.2 ], "sin": []}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [], "sin": [ 0.0, 0.0, 0.35]}}
+            B0 = {"type": 'fourier',
+                     "input_value": {"cos": [1.0, 0.1], "sin": []}}
+            d = {"type": 'fourier',
+                     "input_value": {"cos": [], "sin": [0.0, 1.08, 0.26, 0.46]}}
+            buffer_opt = default_buffer_dict.copy()
+            buffer_opt["delta"] = 0.1 * 2*np.pi
             nphi    = 151
-            add_default_args(kwargs, rc=rc, zs=zs, nfp=1, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta)
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, nfp=1, B0 = B0, d = d, d_over_curvature = None, nphi = nphi, \
+                             omn_buffer = buffer_opt, omn = True)
+
         elif name == "QI r1 Jorge" or name == "QI NFP1 r1 Jorge" or name == "QI Jorge" or name == 6:
             """ The configuration from Jorge et al (2022) """
-            rc      = [ 1.0,0.0,-0.4056622889934463,0.0,0.07747378220100756,0.0,-0.007803860877024245,0.0,0.0,0.0,0.0,0.0,0.0 ]
-            zs      = [ 0.0,0.0,-0.24769666390049602,0.0,0.06767352436978152,0.0,-0.006980621303449165,0.0,-0.0006816270917189934,0.0,-1.4512784317099981e-05,0.0,-2.839050532138523e-06 ]
-            B0_vals = [ 1.0,0.16915531046156507 ]
-            omn_method ='non-zone'
-            k_buffer = 3
-            k_second_order_SS   = 0.0
-            d_over_curvature   = 0.5183783762725197
-            d_svals = [ 0.0,0.003563114185517955,0.0002015921485566435,-0.0012178616509882368,-0.00011629450296628697,-8.255825435616736e-07,3.2011540526397e-06 ]
-            delta   = 0.1
-            nfp     = 1
-            nphi    = 201
-            add_default_args(kwargs, omn_method = omn_method, k_buffer=k_buffer, rc=rc,zs=zs, nfp=nfp, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta, d_over_curvature=d_over_curvature, k_second_order_SS=k_second_order_SS)
-        elif name == "QI NFP1 r2":
-            rc      = [ 1.0,0.0,-0.41599809655680886,0.0,0.08291443961920232,0.0,-0.008906891641686355,0.0,0.0,0.0,0.0,0.0,0.0 ]
-            zs      = [ 0.0,0.0,-0.28721210154364263,0.0,0.08425262593215394,0.0,-0.010427621520053335,0.0,-0.0008921610906627226,0.0,-6.357200965811029e-07,0.0,2.7316247301500753e-07 ]
-            rs      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
-            zc      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
-            sigma0  =  0.0
-            B0_vals = [ 1.0,0.15824229612567256 ]
-            omn_method ='non-zone'
-            k_buffer = 3
-            p_buffer = 2
-            k_second_order_SS   = 0.0
-            d_over_curvature   = 0.48654821249917474
-            d_svals = [ 0.0,-0.00023993050759319644,1.6644294162908823e-05,0.00012071143120099562,-1.1664837950174757e-05,-2.443821681789672e-05,2.0922298879435957e-06 ]
-            delta   = 0.1
-            nfp     = 1
-            B2s_svals = [ 0.0,0.27368018673599265,-0.20986698715787325,0.048031641735420336,0.07269565329289157,1.3981498114634812e-07,-9.952017662433159e-10 ]
-            B2c_cvals = [ -0.0007280714400220894,0.20739775852289746,0.05816363701644946,0.06465766308954603,0.006987357785313118,1.2229700694973357e-07,-3.057497440766065e-09,0.0 ]
-            B2s_cvals = [ 0.0,0.0,0.0,0.0,0.0 ]
-            B2c_svals = [ 0.0,0.0,0.0,0.0 ]
-            p2      =  0.0
-            nphi    = 201
-            add_default_args(kwargs, sigma0 = sigma0, omn_method = omn_method, p_buffer = p_buffer, k_buffer=k_buffer, rs=rs,zc=zc, rc=rc,zs=zs, nfp=nfp, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta, B2c_cvals=B2c_cvals, B2s_svals=B2s_svals, p2=p2, order='r3', k_second_order_SS=k_second_order_SS, d_over_curvature=d_over_curvature, B2s_cvals=B2s_cvals, B2c_svals=B2c_svals)
-        elif name == "QI NFP2 r2":
-            rc      = [ 1.0,0.0,-0.07764451554933544,0.0,0.005284971468552636,0.0,-0.00016252676632564814,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
-            zs      = [ 0.0,0.0,-0.06525233925323416,0.0,0.005858113288916291,0.0,-0.0001930489465183875,0.0,-1.21045713465733e-06,0.0,-6.6162738585035e-08,0.0,-1.8633251242689778e-07,0.0,1.4688345268925702e-07,0.0,-8.600467886165271e-08,0.0,4.172537468496238e-08,0.0,-1.099753830863863e-08 ]
-            rs      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
-            zc      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
-            sigma0  =  0.0
-            B0_vals = [ 1.0,0.12735237900304514 ]
-            omn_method ='non-zone-fourier'
-            k_buffer = 1
-            p_buffer = 2
-            k_second_order_SS   = -25.137439389881692
-            d_over_curvature   = -0.14601620836497467
-            d_svals = [ 0.0,-5.067489975338647,0.2759212337742016,-0.1407115065170644,0.00180521570352059,-0.03135134464554904,0.009582569807320895,-0.004780243312143034,0.002241790407060276,-0.0006738437017134619,0.00031559081192998053 ]
-            delta   = 0.8
-            nfp     = 2
-            B2s_svals = [ 0.0,0.0012174780422017702,0.00026317725313621535,0.0002235661375254599,0.0006235230087895861,0.00021429298911807877,8.428032911991958e-05,-0.000142566391046771,-3.194627950185967e-05,-0.0001119389848119665,-6.226472957451552e-05 ]
-            B2c_cvals = [ 0.0018400322140812674,-0.0013637739279265815,-0.0017961063281748597,-0.000855123667865997,-0.001412983361026517,-0.0010676686588779228,-0.0008117922713651492,-0.0002878689335032291,-0.0002515272886665927,-7.924709175875918e-05,-4.919421452969814e-05,0.0,0.0,0.0,0.0 ]
-            B2s_cvals = [ 0.4445604502180231,0.13822067284200223,-0.561756934579829,0.2488873179399463,-0.14559282723014635,0.020548052084815048,-0.011070304464557718,0.004342889373034949,-0.0015730819049237866,0.0035406584522436986,0.002831887060104115,0.0,0.0,0.0,0.0 ]
-            B2c_svals = [ 0.0,2.7062914673236698,-0.9151373916194634,0.021394010521077745,-0.017469913902854437,0.03186670312840335,0.021102584055813403,0.0024194864183551515,-0.0059152315287890125,0.003709416127750524,0.010027743000785166,0.0,0.0,0.0,0.0 ]
-            p2      =  0.0
-            nphi    = 201
-            add_default_args(kwargs, sigma0 = sigma0, omn_method = omn_method, p_buffer = p_buffer, k_buffer=k_buffer, rs=rs,zc=zc, rc=rc,zs=zs, nfp=nfp, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta, B2c_cvals=B2c_cvals, B2s_svals=B2s_svals, p2=p2, order='r3', k_second_order_SS=k_second_order_SS, d_over_curvature=d_over_curvature, B2s_cvals=B2s_cvals, B2c_svals=B2c_svals)
-        elif name == "LandremanPaul2021QA" or name == "precise QA":
-            """
-            A fit of the near-axis model to the quasi-axisymmetric
-            configuration in Landreman & Paul, arXiv:2108.03711 (2021).
-
-            The fit was performed to the boozmn data using the script
-            20200621-01-Extract_B0_B1_B2_from_boozxform
-            """
-            add_default_args(kwargs,
-                             nfp=2,
-                             rc=[1.0038581971135636, 0.18400998741139907, 0.021723381370503204, 0.0025968236014410812, 0.00030601568477064874, 3.5540509760304384e-05, 4.102693907398271e-06, 5.154300428457222e-07, 4.8802742243232844e-08, 7.3011320375259876e-09],
-                             zs=[0.0, -0.1581148860568176, -0.02060702320552523, -0.002558840496952667, -0.0003061368667524159, -3.600111450532304e-05, -4.174376962124085e-06, -4.557462755956434e-07, -8.173481495049928e-08, -3.732477282851326e-09],
-                             B0=1.006541121335688,
-                             etabar=-0.6783912804454629,
-                             B2c=0.26859318908803137,
-                             nphi=99,
-                             order='r3')
-
-        elif name == "precise QA+well":
-            """
-            A fit of the near-axis model to the precise quasi-axisymmetric
-            configuration from SIMSOPT with magnetic well.
-
-            The fit was performed to the boozmn data using the script
-            20200621-01-Extract_B0_B1_B2_from_boozxform
-            """
-            add_default_args(kwargs,
-                             nfp=2,
-                             rc=[1.0145598919163676, 0.2106377247598754, 0.025469267136340394, 0.0026773601516136727, 0.00021104172568911153, 7.891887175655046e-06, -8.216044358250985e-07, -2.379942694112007e-07, -2.5495108673798585e-08, 1.1679227114962395e-08, 8.961288962248274e-09],
-                             zs=[0.0, -0.14607192982551795, -0.021340448470388084, -0.002558983303282255, -0.0002355043952788449, -1.2752278964149462e-05, 3.673356209179739e-07, 9.261098628194352e-08, -7.976283362938471e-09, -4.4204430633540756e-08, -1.6019372369445714e-08],
-                             B0=1.0117071561808106,
-                             etabar=-0.5064143402495729,
-                             B2c=-0.2749140163639202,
-                             nphi=99,
-                             order='r3')
-            
-        elif name == "LandremanPaul2021QH" or name == "precise QH":
-            """
-            A fit of the near-axis model to the quasi-helically symmetric
-            configuration in Landreman & Paul, arXiv:2108.03711 (2021).
-
-            The fit was performed to the boozmn data using the script
-            20211001-02-Extract_B0_B1_B2_from_boozxform
-            """
-            add_default_args(kwargs,
-                             nfp=4,
-                             rc=[1.0033608429348413, 0.19993025252481125, 0.03142704185268144, 0.004672593645851904, 0.0005589954792333977, 3.298415996551805e-05, -7.337736061708705e-06, -2.8829857667619663e-06, -4.51059545517434e-07],
-                             zs=[0.0, 0.1788824025525348, 0.028597666614604524, 0.004302393796260442, 0.0005283708386982674, 3.5146899855826326e-05, -5.907671188908183e-06, -2.3945326611145963e-06, -6.87509350019021e-07],
-                             B0=1.003244143729638,
-                             etabar=-1.5002839921360023,
-                             B2c=0.37896407142157423,
-                             nphi=99,
-                             order='r3')
-
-        elif name == "precise QH+well":
-            """
-            A fit of the near-axis model to the precise quasi-helically symmetric
-            configuration from SIMSOPT with magnetic well.
-
-            The fit was performed to the boozmn data using the script
-            20211001-02-Extract_B0_B1_B2_from_boozxform
-            """
-            add_default_args(kwargs,
-                             nfp=4,
-                             rc=[1.000474932581454, 0.16345392520298313, 0.02176330066615466, 0.0023779201451133163, 0.00014141976024376502, -1.0595894482659743e-05, -2.9989267970578764e-06, 3.464574408947338e-08],
-                             zs=[0.0, 0.12501739099323073, 0.019051257169780858, 0.0023674771227236587, 0.0001865909743321566, -2.2659053455802824e-06, -2.368335337174369e-06, -1.8521248561490157e-08],
-                             B0=0.999440074325872,
-                             etabar=-1.2115187546668142,
-                             B2c=0.6916862277166693,
-                             nphi=99,
-                             order='r3')
-        elif name == "QI NFP2 Katia" or name == "QI NFP2 DirectConstruction":
-            rc      = [ 1.0,0.0,-1/17 ]
-            zs      = [ 0.0,0.8/2.04,0.01/2.04 ]
-            rs      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
-            zc      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
-            sigma0  =  0.0
-            B0_vals = [ 1.0,0.15 ]
-            omn_method ='non-zone'
-            k_buffer = 2
-            d_over_curvature   = 0.73
-            d_svals = [ 0.0,0.0,0.0,0.0 ]
-            delta   = 0.0
-            nfp     = 2
-            nphi    = 201
-            add_default_args(kwargs, sigma0 = sigma0, omn_method = omn_method, k_buffer=k_buffer, rs=rs,zc=zc, rc=rc,zs=zs, nfp=nfp, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta, d_over_curvature=d_over_curvature)
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [ 1.0,0.0,-0.4056622889934463,0.0,0.07747378220100756,0.0,-0.007803860877024245,0.0,0.0,0.0,0.0,0.0,0.0 ],
+                                     "sin": []}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [],
+                                     "sin": [ 0.0,0.0,-0.24769666390049602,0.0,0.06767352436978152,0.0,-0.006980621303449165,0.0,-0.0006816270917189934,0.0,-1.4512784317099981e-05,0.0,-2.839050532138523e-06 ]}}
+            B0 = {"type": 'fourier',
+                     "input_value": {"cos": [ 1.0,0.16915531046156507 ], "sin": []}}
+            d = {"type": 'fourier',
+                     "input_value": {"cos": [], 
+                                     "sin": [ 0.0,0.003563114185517955,0.0002015921485566435,-0.0012178616509882368,-0.00011629450296628697,-8.255825435616736e-07,3.2011540526397e-06 ]}}
+            d_over_curvature = {"type": 'scalar', "input_value": 0.5183783762725197}
         
-        elif name == "QI NFP3 Katia" or name == "QI NFP3 DirectConstruction":
-            rc      = [ 1.0,  9.075485257221899e-02, -2.058279495912439e-02, -1.106766494783158e-02, -1.644390251809640e-03 ]
-            zs      = [ 0.0,0.36,0.02,0.01 ]
-            rs      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
-            zc      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
-            sigma0  =  0.0
-            B0_vals = [1,0.25]
-            omn_method ='non-zone'
-            k_buffer = 2
-            d_over_curvature   = 0.73
-            d_svals = [ 0.0,0.0,0.0,0.0 ]
-            delta   = 0.0
-            nfp     = 3
+            buffer_opt = default_buffer_dict.copy()
+            buffer_opt["omn_method"] = 'non-zone'
+            buffer_opt["delta"] = 0.1
+            buffer_opt["k_buffer"] = 3
+            nfp     = 1
             nphi    = 201
-            add_default_args(kwargs, sigma0 = sigma0, omn_method = omn_method, k_buffer=k_buffer, rs=rs,zc=zc, rc=rc,zs=zs, nfp=nfp, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta, d_over_curvature=d_over_curvature)
+
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, nfp=nfp, B0 = B0, d = d, d_over_curvature = d_over_curvature, nphi = nphi, \
+                             omn_buffer = buffer_opt, omn = True)
+
+        elif name == "QI NFP1 r2":
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [ 1.0,0.0,-0.41599809655680886,0.0,0.08291443961920232,0.0,-0.008906891641686355,0.0,0.0,0.0,0.0,0.0,0.0 ],
+                                     "sin": [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ],
+                                     "sin": [ 0.0,0.0,-0.28721210154364263,0.0,0.08425262593215394,0.0,-0.010427621520053335,0.0,-0.0008921610906627226,0.0,-6.357200965811029e-07,0.0,2.7316247301500753e-07 ]}}
+            B0 = {"type": 'fourier',
+                     "input_value": {"cos": [ 1.0,0.15824229612567256 ], "sin": []}}
+            d = {"type": 'fourier',
+                     "input_value": {"cos": [], 
+                                     "sin": [ 0.0,-0.00023993050759319644,1.6644294162908823e-05,0.00012071143120099562,-1.1664837950174757e-05,-2.443821681789672e-05,2.0922298879435957e-06 ]}}
+            d_over_curvature = {"type": 'scalar', "input_value": 0.48654821249917474}
+        
+            X2c = {"type": 'fourier',
+                     "input_value": {"cos": [ -0.0007280714400220894,0.20739775852289746,0.05816363701644946,0.06465766308954603,0.006987357785313118,1.2229700694973357e-07,-3.057497440766065e-09,0.0 ], 
+                                     "sin": [ 0.0,0.0,0.0,0.0 ]}}
+            X2s = {"type": 'fourier',
+                     "input_value": {"cos": [ 0.0,0.0,0.0,0.0,0.0 ], 
+                                     "sin": [ 0.0,0.27368018673599265,-0.20986698715787325,0.048031641735420336,0.07269565329289157,1.3981498114634812e-07,-9.952017662433159e-10 ]}}
+            buffer_opt = default_buffer_dict.copy()
+            buffer_opt["omn_method"] = 'non-zone'
+            buffer_opt["delta"] = 0.1
+            buffer_opt["k_buffer"] = 3
+            buffer_opt["p_buffer"] = 2
+            sigma0 = 0.0
+            nfp     = 1
+            p2      =  0.0
+            nphi    = 201
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, nfp=nfp, B0 = B0, d = d, d_over_curvature = d_over_curvature, nphi = nphi, \
+                             omn_buffer = buffer_opt, sigma0 = sigma0, p2 = p2, X2c = X2c, X2s = X2s, omn = True, order = 'r3')
+            
+        elif name == "QI NFP2 r2":
+            Raxis = {"type": 'fourier',
+                     "input_value": {"cos": [ 1.0,0.0,-0.07764451554933544,0.0,0.005284971468552636,0.0,-0.00016252676632564814,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ],
+                                     "sin":  [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]}}
+            Zaxis = {"type": 'fourier',
+                     "input_value": {"cos": [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ],
+                                     "sin": [ 0.0,0.0,-0.06525233925323416,0.0,0.005858113288916291,0.0,-0.0001930489465183875,0.0,-1.21045713465733e-06,0.0,-6.6162738585035e-08,0.0,-1.8633251242689778e-07,0.0,1.4688345268925702e-07,0.0,-8.600467886165271e-08,0.0,4.172537468496238e-08,0.0,-1.099753830863863e-08 ]}}
+            B0 = {"type": 'fourier',
+                     "input_value": {"cos": [ 1.0,0.12735237900304514 ], "sin": []}}
+            d = {"type": 'fourier',
+                     "input_value": {"cos": [], 
+                                     "sin": [ 0.0,-5.067489975338647,0.2759212337742016,-0.1407115065170644,0.00180521570352059,-0.03135134464554904,0.009582569807320895,-0.004780243312143034,0.002241790407060276,-0.0006738437017134619,0.00031559081192998053 ]}}
+            d_over_curvature = {"type": 'scalar', "input_value": -0.14601620836497467}
+        
+            X2c = {"type": 'fourier',
+                     "input_value": {"cos": [ 0.0018400322140812674,-0.0013637739279265815,-0.0017961063281748597,-0.000855123667865997,-0.001412983361026517,-0.0010676686588779228,-0.0008117922713651492,-0.0002878689335032291,-0.0002515272886665927,-7.924709175875918e-05,-4.919421452969814e-05,0.0,0.0,0.0,0.0 ], 
+                                     "sin": [ 0.0,2.7062914673236698,-0.9151373916194634,0.021394010521077745,-0.017469913902854437,0.03186670312840335,0.021102584055813403,0.0024194864183551515,-0.0059152315287890125,0.003709416127750524,0.010027743000785166,0.0,0.0,0.0,0.0 ]}}
+            X2s = {"type": 'fourier',
+                     "input_value": {"cos": [ 0.4445604502180231,0.13822067284200223,-0.561756934579829,0.2488873179399463,-0.14559282723014635,0.020548052084815048,-0.011070304464557718,0.004342889373034949,-0.0015730819049237866,0.0035406584522436986,0.002831887060104115,0.0,0.0,0.0,0.0 ], 
+                                     "sin": [ 0.0,0.0012174780422017702,0.00026317725313621535,0.0002235661375254599,0.0006235230087895861,0.00021429298911807877,8.428032911991958e-05,-0.000142566391046771,-3.194627950185967e-05,-0.0001119389848119665,-6.226472957451552e-05 ]}}
+            buffer_opt = default_buffer_dict.copy()
+            buffer_opt["omn_method"] = 'non-zone-fourier'
+            buffer_opt["delta"] = 0.8
+            buffer_opt["k_buffer"] = 1
+            buffer_opt["p_buffer"] = 2
+            sigma0 = 0.0
+            nfp     = 2
+            p2      = 0.0
+            nphi    = 201
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, nfp=nfp, B0 = B0, d = d, d_over_curvature = d_over_curvature, nphi = nphi, \
+                             omn_buffer = buffer_opt, sigma0 = sigma0, p2 = p2, X2c = X2c, X2s = X2s, omn = True, order = 'r3')
+            
+        # elif name == "LandremanPaul2021QA" or name == "precise QA":
+        #     """
+        #     A fit of the near-axis model to the quasi-axisymmetric
+        #     configuration in Landreman & Paul, arXiv:2108.03711 (2021).
+
+        #     The fit was performed to the boozmn data using the script
+        #     20200621-01-Extract_B0_B1_B2_from_boozxform
+        #     """
+        #     add_default_args(kwargs,
+        #                      nfp=2,
+        #                      rc=[1.0038581971135636, 0.18400998741139907, 0.021723381370503204, 0.0025968236014410812, 0.00030601568477064874, 3.5540509760304384e-05, 4.102693907398271e-06, 5.154300428457222e-07, 4.8802742243232844e-08, 7.3011320375259876e-09],
+        #                      zs=[0.0, -0.1581148860568176, -0.02060702320552523, -0.002558840496952667, -0.0003061368667524159, -3.600111450532304e-05, -4.174376962124085e-06, -4.557462755956434e-07, -8.173481495049928e-08, -3.732477282851326e-09],
+        #                      B0=1.006541121335688,
+        #                      etabar=-0.6783912804454629,
+        #                      B2c=0.26859318908803137,
+        #                      nphi=99,
+        #                      order='r3')
+
+        # elif name == "precise QA+well":
+        #     """
+        #     A fit of the near-axis model to the precise quasi-axisymmetric
+        #     configuration from SIMSOPT with magnetic well.
+
+        #     The fit was performed to the boozmn data using the script
+        #     20200621-01-Extract_B0_B1_B2_from_boozxform
+        #     """
+        #     add_default_args(kwargs,
+        #                      nfp=2,
+        #                      rc=[1.0145598919163676, 0.2106377247598754, 0.025469267136340394, 0.0026773601516136727, 0.00021104172568911153, 7.891887175655046e-06, -8.216044358250985e-07, -2.379942694112007e-07, -2.5495108673798585e-08, 1.1679227114962395e-08, 8.961288962248274e-09],
+        #                      zs=[0.0, -0.14607192982551795, -0.021340448470388084, -0.002558983303282255, -0.0002355043952788449, -1.2752278964149462e-05, 3.673356209179739e-07, 9.261098628194352e-08, -7.976283362938471e-09, -4.4204430633540756e-08, -1.6019372369445714e-08],
+        #                      B0=1.0117071561808106,
+        #                      etabar=-0.5064143402495729,
+        #                      B2c=-0.2749140163639202,
+        #                      nphi=99,
+        #                      order='r3')
+            
+        # elif name == "LandremanPaul2021QH" or name == "precise QH":
+        #     """
+        #     A fit of the near-axis model to the quasi-helically symmetric
+        #     configuration in Landreman & Paul, arXiv:2108.03711 (2021).
+
+        #     The fit was performed to the boozmn data using the script
+        #     20211001-02-Extract_B0_B1_B2_from_boozxform
+        #     """
+        #     add_default_args(kwargs,
+        #                      nfp=4,
+        #                      rc=[1.0033608429348413, 0.19993025252481125, 0.03142704185268144, 0.004672593645851904, 0.0005589954792333977, 3.298415996551805e-05, -7.337736061708705e-06, -2.8829857667619663e-06, -4.51059545517434e-07],
+        #                      zs=[0.0, 0.1788824025525348, 0.028597666614604524, 0.004302393796260442, 0.0005283708386982674, 3.5146899855826326e-05, -5.907671188908183e-06, -2.3945326611145963e-06, -6.87509350019021e-07],
+        #                      B0=1.003244143729638,
+        #                      etabar=-1.5002839921360023,
+        #                      B2c=0.37896407142157423,
+        #                      nphi=99,
+        #                      order='r3')
+
+        # elif name == "precise QH+well":
+        #     """
+        #     A fit of the near-axis model to the precise quasi-helically symmetric
+        #     configuration from SIMSOPT with magnetic well.
+
+        #     The fit was performed to the boozmn data using the script
+        #     20211001-02-Extract_B0_B1_B2_from_boozxform
+        #     """
+        #     add_default_args(kwargs,
+        #                      nfp=4,
+        #                      rc=[1.000474932581454, 0.16345392520298313, 0.02176330066615466, 0.0023779201451133163, 0.00014141976024376502, -1.0595894482659743e-05, -2.9989267970578764e-06, 3.464574408947338e-08],
+        #                      zs=[0.0, 0.12501739099323073, 0.019051257169780858, 0.0023674771227236587, 0.0001865909743321566, -2.2659053455802824e-06, -2.368335337174369e-06, -1.8521248561490157e-08],
+        #                      B0=0.999440074325872,
+        #                      etabar=-1.2115187546668142,
+        #                      B2c=0.6916862277166693,
+        #                      nphi=99,
+        #                      order='r3')
+        # elif name == "QI NFP2 Katia" or name == "QI NFP2 DirectConstruction":
+        #     rc      = [ 1.0,0.0,-1/17 ]
+        #     zs      = [ 0.0,0.8/2.04,0.01/2.04 ]
+        #     rs      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
+        #     zc      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
+        #     sigma0  =  0.0
+        #     B0_vals = [ 1.0,0.15 ]
+        #     omn_method ='non-zone'
+        #     k_buffer = 2
+        #     d_over_curvature   = 0.73
+        #     d_svals = [ 0.0,0.0,0.0,0.0 ]
+        #     delta   = 0.0
+        #     nfp     = 2
+        #     nphi    = 201
+        #     add_default_args(kwargs, sigma0 = sigma0, omn_method = omn_method, k_buffer=k_buffer, rs=rs,zc=zc, rc=rc,zs=zs, nfp=nfp, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta, d_over_curvature=d_over_curvature)
+        
+        # elif name == "QI NFP2 Katia smooth":
+        #     rc      = [ 1.0,0.0,-1/17 ]
+        #     zs      = [ 0.0,0.8/2.04,0.01/2.04 ]
+        #     rs      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
+        #     zc      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
+        #     sigma0  =  0.0
+        #     B0_vals = [ 1.0,0.15 ]
+        #     omn_method ='non-zone-smoother'
+        #     k_buffer = 2
+        #     p_buffer = 1
+        #     d_over_curvature   = 0.73
+        #     d_svals = [ 0.0,0.0,0.0,0.0 ]
+        #     delta   = 0.0
+        #     nfp     = 2
+        #     nphi    = 201
+        #     add_default_args(kwargs, sigma0 = sigma0, omn_method = omn_method, k_buffer=k_buffer, p_buffer=p_buffer, rs=rs,zc=zc, rc=rc,zs=zs, nfp=nfp, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta, d_over_curvature=d_over_curvature)
+        
+        # elif name == "QI NFP3 Katia" or name == "QI NFP3 DirectConstruction":
+        #     rc      = [ 1.0,  9.075485257221899e-02, -2.058279495912439e-02, -1.106766494783158e-02, -1.644390251809640e-03 ]
+        #     zs      = [ 0.0,0.36,0.02,0.01 ]
+        #     rs      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
+        #     zc      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
+        #     sigma0  =  0.0
+        #     B0_vals = [1,0.25]
+        #     omn_method ='non-zone'
+        #     k_buffer = 2
+        #     d_over_curvature   = 0.73
+        #     d_svals = [ 0.0,0.0,0.0,0.0 ]
+        #     delta   = 0.0
+        #     nfp     = 3
+        #     nphi    = 201
+        #     add_default_args(kwargs, sigma0 = sigma0, omn_method = omn_method, k_buffer=k_buffer, rs=rs,zc=zc, rc=rc,zs=zs, nfp=nfp, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta, d_over_curvature=d_over_curvature)
+       
+        # elif name == "QI NFP3 Katia smooth":
+        #     rc      = [ 1.0,  9.075485257221899e-02, -2.058279495912439e-02, -1.106766494783158e-02, -1.644390251809640e-03 ]
+        #     zs      = [ 0.0,0.36,0.02,0.01 ]
+        #     rs      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
+        #     zc      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
+        #     sigma0  =  0.0
+        #     B0_vals = [1,0.25]
+        #     omn_method ='non-zone-smoother'
+        #     k_buffer = 2
+        #     p_buffer = 1
+        #     d_over_curvature   = 0.73
+        #     d_svals = [ 0.0,0.0,0.0,0.0 ]
+        #     delta   = 0.0
+        #     nfp     = 3
+        #     nphi    = 201
+        #     add_default_args(kwargs, sigma0 = sigma0, omn_method = omn_method, k_buffer=k_buffer, p_buffer=p_buffer, rs=rs,zc=zc, rc=rc,zs=zs, nfp=nfp, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta, d_over_curvature=d_over_curvature)
        
         else:
             raise ValueError('Unrecognized configuration name')
 
         return cls(**kwargs)
 
-    @classmethod
-    def from_cxx(cls, filename):
-        """
-        Load a configuration from a ``qsc_out.<extension>.nc`` output file
-        that was generated by the C++ version of QSC. Almost all the
-        data will be taken from the output file, over-writing any
-        calculations done in python when the new Qic object is
-        created.
-        """
-        def to_string(nc_str):
-            """ Convert a string from the netcdf binary format to a python string. """
-            temp = [c.decode('UTF-8') for c in nc_str]
-            return (''.join(temp)).strip()
+    # @classmethod
+    # def from_cxx(cls, filename):
+    #     """
+    #     Load a configuration from a ``qsc_out.<extension>.nc`` output file
+    #     that was generated by the C++ version of QSC. Almost all the
+    #     data will be taken from the output file, over-writing any
+    #     calculations done in python when the new Qic object is
+    #     created.
+    #     """
+    #     def to_string(nc_str):
+    #         """ Convert a string from the netcdf binary format to a python string. """
+    #         temp = [c.decode('UTF-8') for c in nc_str]
+    #         return (''.join(temp)).strip()
         
-        f = netcdf.netcdf_file(filename, mmap=False)
-        nfp = f.variables['nfp'][()]
-        nphi = f.variables['nphi'][()]
-        rc = f.variables['R0c'][()]
-        rs = f.variables['R0s'][()]
-        zc = f.variables['Z0c'][()]
-        zs = f.variables['Z0s'][()]
-        I2 = f.variables['I2'][()]
-        B0 = f.variables['B0'][()]
-        spsi = f.variables['spsi'][()]
-        sG = f.variables['sG'][()]
-        etabar = f.variables['eta_bar'][()]
-        sigma0 = f.variables['sigma0'][()]
-        order_r_option = to_string(f.variables['order_r_option'][()])
-        if order_r_option == 'r2.1':
-            order_r_option = 'r3'
-        if order_r_option == 'r1':
-            p2 = 0.0
-            B2c = 0.0
-            B2s = 0.0
-        else:
-            p2 = f.variables['p2'][()]
-            B2c = f.variables['B2c'][()]
-            B2s = f.variables['B2s'][()]
+    #     f = netcdf.netcdf_file(filename, mmap=False)
+    #     nfp = f.variables['nfp'][()]
+    #     nphi = f.variables['nphi'][()]
+    #     rc = f.variables['R0c'][()]
+    #     rs = f.variables['R0s'][()]
+    #     zc = f.variables['Z0c'][()]
+    #     zs = f.variables['Z0s'][()]
+    #     I2 = f.variables['I2'][()]
+    #     B0 = f.variables['B0'][()]
+    #     spsi = f.variables['spsi'][()]
+    #     sG = f.variables['sG'][()]
+    #     etabar = f.variables['eta_bar'][()]
+    #     sigma0 = f.variables['sigma0'][()]
+    #     order_r_option = to_string(f.variables['order_r_option'][()])
+    #     if order_r_option == 'r2.1':
+    #         order_r_option = 'r3'
+    #     if order_r_option == 'r1':
+    #         p2 = 0.0
+    #         B2c = 0.0
+    #         B2s = 0.0
+    #     else:
+    #         p2 = f.variables['p2'][()]
+    #         B2c = f.variables['B2c'][()]
+    #         B2s = f.variables['B2s'][()]
 
-        q = cls(nfp=nfp, nphi=nphi, rc=rc, rs=rs, zc=zc, zs=zs,
-                B0=B0, sG=sG, spsi=spsi,
-                etabar=etabar, sigma0=sigma0, I2=I2, p2=p2, B2c=B2c, B2s=B2s, order=order_r_option)
+    #     q = cls(nfp=nfp, nphi=nphi, rc=rc, rs=rs, zc=zc, zs=zs,
+    #             B0=B0, sG=sG, spsi=spsi,
+    #             etabar=etabar, sigma0=sigma0, I2=I2, p2=p2, B2c=B2c, B2s=B2s, order=order_r_option)
         
-        def read(name, cxx_name=None):
-            if cxx_name is None: cxx_name = name
-            setattr(q, name, f.variables[cxx_name][()])
+    #     def read(name, cxx_name=None):
+    #         if cxx_name is None: cxx_name = name
+    #         setattr(q, name, f.variables[cxx_name][()])
 
-        [read(v) for v in ['R0', 'Z0', 'R0p', 'Z0p', 'R0pp', 'Z0pp', 'R0ppp', 'Z0ppp',
-                           'sigma', 'curvature', 'torsion', 'X1c', 'Y1c', 'Y1s', 'elongation']]
-        if order_r_option != 'r1':
-            [read(v) for v in ['X20', 'X2c', 'X2s', 'Y20', 'Y2c', 'Y2s', 'Z20', 'Z2c', 'Z2s', 'B20']]
-            if order_r_option != 'r2':
-                [read(v) for v in ['X3c1', 'Y3c1', 'Y3s1']]
+    #     [read(v) for v in ['R0', 'Z0', 'R0p', 'Z0p', 'R0pp', 'Z0pp', 'R0ppp', 'Z0ppp',
+    #                        'sigma', 'curvature', 'torsion', 'X1c', 'Y1c', 'Y1s', 'elongation']]
+    #     if order_r_option != 'r1':
+    #         [read(v) for v in ['X20', 'X2c', 'X2s', 'Y20', 'Y2c', 'Y2s', 'Z20', 'Z2c', 'Z2s', 'B20']]
+    #         if order_r_option != 'r2':
+    #             [read(v) for v in ['X3c1', 'Y3c1', 'Y3s1']]
                     
-        f.close()
-        return q
+    #     f.close()
+    #     return q
         
     def min_R0_penalty(self):
         """
@@ -614,9 +945,9 @@ class Qic():
         
     @classmethod
     def from_boozxform(cls, booz_xform_file, max_s_for_fit = 0.4, N_phi = 200, max_n_to_plot = 2, show=False,
-                         vmec_file=None, rc=[], rs=[], zc=[], zs=[], nNormal=None, input_stel=None, savefig=False):#, order='r2', sigma0=0, I2=0, p2=0, omn=False):
+                         vmec_file=None, rc=[], rs=[], zc=[], zs=[], nNormal=None, input_stel=None, savefig=False, phi_a = []):#, order='r2', sigma0=0, I2=0, p2=0, omn=False):
         """
-        Load a configuration from a VMEC and a BOOZ_XFORM output files
+        NEED TO MODIFY Load a configuration from a VMEC and a BOOZ_XFORM output files
         """
         # Read properties of BOOZ_XFORM output file
         f = netcdf.netcdf_file(booz_xform_file,'r',mmap=False)
@@ -627,7 +958,10 @@ class Qic():
         ns = f.variables['ns_b'][()]
         nfp = f.variables['nfp_b'][()]
         Psi = f.variables['phi_b'][()]
-        Psi_a = np.abs(Psi[-1])
+        if phi_a:
+            Psi_a = phi_a
+        else:
+            Psi_a = np.abs(Psi[-1])
         iotaVMECt=f.variables['iota_b'][()][1]
         f.close()
 
@@ -637,6 +971,8 @@ class Qic():
             am = f.variables['am'][()]
             rc = f.variables['raxis_cc'][()]
             zs = -f.variables['zaxis_cs'][()]
+            Phi_v = f.variables['phi'][()]
+            Psi_a = np.abs(Phi_v[-1])
             try:
                 rs = -f.variables['raxis_cs'][()]
                 zc = f.variables['zaxis_cc'][()]
@@ -696,7 +1032,7 @@ class Qic():
                 plt.title('bmnc(m='+str(m)+' n='+str(n)+')')
             if m==0:
                 # For m=0, fit a polynomial in s (not sqrt(s)) that does not need to go through the origin.
-                degree = 4
+                degree = 1
                 p = np.polyfit(s_half[mask], bmnc[mask,jmn], degree)
                 B0 += p[-1] * np.cos(n*nfp*phi)
                 B20 += p[-2] * np.cos(n*nfp*phi)
@@ -708,7 +1044,7 @@ class Qic():
                 y1 = bmnc[mask,jmn]
                 x2 = np.concatenate((-x1,x1))
                 y2 = np.concatenate((-y1,y1))
-                degree = 5
+                degree = 1
                 p = np.polyfit(x2,y2, degree)
                 B1c += p[-2] * (np.sin(n*nfp*phi) * np.sin(nNormal*phi) + np.cos(n*nfp*phi) * np.cos(nNormal*phi))
                 B1s += p[-2] * (np.sin(n*nfp*phi) * np.cos(nNormal*phi) - np.cos(n*nfp*phi) * np.sin(nNormal*phi))
@@ -718,22 +1054,22 @@ class Qic():
                 # For m=2, fit a polynomial in s (not sqrt(s)) that does need to go through the origin.
                 x1 = s_half[mask]
                 y1 = bmnc[mask,jmn]
-                degree = 4
+                degree = 1
                 p = np.polyfit(x1,y1, degree)
-                B2c += p[-2] * (np.sin(n*nfp*phi) * np.sin(nNormal*phi) + np.cos(n*nfp*phi) * np.cos(nNormal*phi))
-                B2s += p[-2] * (np.sin(n*nfp*phi) * np.cos(nNormal*phi) - np.cos(n*nfp*phi) * np.sin(nNormal*phi))
+                B2c += p[-2] * (np.sin(n*nfp*phi) * np.sin(2*nNormal*phi) + np.cos(n*nfp*phi) * np.cos(2*nNormal*phi))
+                B2s += p[-2] * (np.sin(n*nfp*phi) * np.cos(2*nNormal*phi) - np.cos(n*nfp*phi) * np.sin(2*nNormal*phi))
                 if doplot:
                     plt.plot(np.sqrt(s_fine), np.polyval(p, s_fine),'r')
         if show:
             plt.show()
         # Convert expansion in sqrt(s) to an expansion in r
         BBar = np.mean(B0)
-        sqrt_s_over_r = np.sqrt(np.pi * BBar / Psi_a)
-        B1s *= sqrt_s_over_r
-        B1c *= -sqrt_s_over_r
+        sqrt_s_over_r = np.sqrt(np.pi * BBar / np.abs(Psi_a))
+        B1s *= -sqrt_s_over_r
+        B1c *= sqrt_s_over_r
         B20 *= sqrt_s_over_r*sqrt_s_over_r
         B2c *= sqrt_s_over_r*sqrt_s_over_r
-        B2s *= sqrt_s_over_r*sqrt_s_over_r
+        B2s *= -sqrt_s_over_r*sqrt_s_over_r
         eta_bar = np.mean(B1c) / BBar
 
         # NEEDS A WAY TO READ I2 FROM VMEC OR BOOZ_XFORM
@@ -761,41 +1097,43 @@ class Qic():
         # q.B2s_boozxform_array=B2s
         # q.iotaVMEC = iotaVMECt
         try:
-            name = vmec_file[5:-3]
+            # name = vmec_file[5:-3]
+            name = 'temp'
 
             figB0=plt.figure(figsize=(5, 5), dpi=80)
-            plt.plot(input_stel.phi, input_stel.B0, 'r--', label=r'$B_0$ Near-axis')
-            plt.plot(input_stel.phi, B0,            'b-' , label=r'$B_0$ VMEC')
+            plt.plot(input_stel.varphi, input_stel.B0, 'r--', label=r'$B_0$ Near-axis')
+            plt.plot(phi, B0,            'b-' , label=r'$B_0$ VMEC')
             plt.xlabel(r'$\phi$', fontsize=18)
             plt.legend(fontsize=14)
             if savefig: figB0.savefig('B0_VMEC'+name+'.pdf')
 
             figB1=plt.figure(figsize=(5, 5), dpi=80)
-            plt.plot(input_stel.phi, input_stel.B1c, 'r--', label=r'$B_{1c}$ Near-axis')
-            plt.plot(input_stel.phi, B1c,            'r-' , label=r'$B_{1c}$ VMEC')
-            plt.plot(input_stel.phi, input_stel.B1s, 'b--', label=r'$B_{1s}$ Near-axis')
-            plt.plot(input_stel.phi, B1s,            'b-' , label=r'$B_{1s}$ VMEC')
+            plt.plot(input_stel.varphi, input_stel.B1c, 'r--', label=r'$B_{1c}$ Near-axis')
+            plt.plot(phi, B1c,            'r-' , label=r'$B_{1c}$ VMEC')
+            plt.plot(input_stel.varphi, input_stel.B1s, 'b--', label=r'$B_{1s}$ Near-axis')
+            plt.plot(phi, B1s,            'b-' , label=r'$B_{1s}$ VMEC')
             plt.xlabel(r'$\phi$', fontsize=18)
             plt.legend(fontsize=14)
             if savefig: figB1.savefig('B1_VMEC'+name+'.pdf')
 
             figB2=plt.figure(figsize=(5, 5), dpi=80)
             if input_stel.order != 'r1':
-                plt.plot(input_stel.phi, input_stel.B20, 'r--', label=r'$B_{20}$ Near-axis')
-                plt.plot(input_stel.phi, input_stel.B2c_array, 'b--', label=r'$B_{2c}$ Near-axis')
-                plt.plot(input_stel.phi, input_stel.B2s_array, 'g--', label=r'$B_{2s}$ Near-axis')
-            plt.plot(input_stel.phi, B20,            'r-' , label=r'$B_{20}$ VMEC')
-            plt.plot(input_stel.phi, B2c,            'b-' , label=r'$B_{2c}$ VMEC')
-            plt.plot(input_stel.phi, B2s,            'g-' , label=r'$B_{2s}$ VMEC')
+                plt.plot(input_stel.varphi, input_stel.B20, 'r--', label=r'$B_{20}$ Near-axis')
+                plt.plot(input_stel.varphi, input_stel.B2c_array, 'b--', label=r'$B_{2c}$ Near-axis')
+                plt.plot(input_stel.varphi, input_stel.B2s_array, 'g--', label=r'$B_{2s}$ Near-axis')
+            plt.plot(phi, B20,            'r-' , label=r'$B_{20}$ VMEC')
+            plt.plot(phi, B2c,            'b-' , label=r'$B_{2c}$ VMEC')
+            plt.plot(phi, B2s,            'g-' , label=r'$B_{2s}$ VMEC')
             plt.xlabel(r'$\phi$', fontsize=18)
             plt.legend(fontsize=14)
             if savefig: figB2.savefig('B2_VMEC'+name+'.pdf')
 
             if show: plt.show()
+
+            plt.close(figB0)
+            plt.close()
         except Exception as e:
             print(e)
 
-        plt.close(figB0)
-        plt.close()
 
         return [B0,B1c,B1s,B20,B2c,B2s,iotaVMECt]

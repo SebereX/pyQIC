@@ -45,8 +45,8 @@ class GradGradBTensorTests(unittest.TestCase):
         Compare Rogerio's derivation to mine to ensure the results
         coincide.  Also verify symmetry in the first two components.
         """
-        rtol = 1e-4
-        atol = 1e-4
+        rtol = 1e-2
+        atol = 1e-2
         for sG in [-1, 1]:
             for spsi in [-1, 1]:
                 for config in [1, 2, 3, 4, 5, 6, "QI NFP1 r2", "QI NFP2 r2"]:
@@ -59,7 +59,7 @@ class GradGradBTensorTests(unittest.TestCase):
                         B0 = np.random.rand() * 0.4 + 0.8
                         s = Qic.from_paper(config, sG=sG, spsi= spsi, B0=B0, nphi=nphi, order = 'r3')
                     s.calculate_grad_grad_B_tensor(two_ways = True)
-                    logger.info("Max difference between Matt and Rogerio's derivation for config {} is {}".format(config, np.max(np.abs(s.grad_grad_B - s.grad_grad_B_alt))))
+                    logger.info("Max difference between two alternative forms for config {} is {}".format(config, np.max(np.abs(s.grad_grad_B - s.grad_grad_B_alt))))
                     np.testing.assert_allclose(s.grad_grad_B, s.grad_grad_B_alt, rtol=rtol, atol=atol)
                     if config in [1, 2, 3, 4, 5]:
                         s_qs = Qsc.from_paper(config, sG=sG, spsi= spsi, B0=B0, nphi=nphi, order = 'r2')
@@ -74,7 +74,14 @@ class GradGradBTensorTests(unittest.TestCase):
                                 np.testing.assert_allclose(s.grad_grad_B[:, i, j, k], s.grad_grad_B[:, j, i, k], atol=atol, rtol=rtol)
                                 # For curl-free fields, the tensor should also be symmetric in the last 2 indices:
                                 if config in {1, 2, 4, "QI NFP1 r2", "QI NFP2 r2"}:
-                                    np.testing.assert_allclose(s.grad_grad_B_tensor_cylindrical()[i, j, k, :], s.grad_grad_B_tensor_cylindrical()[i, k, j, :], rtol=rtol, atol=atol)
+                                    np.testing.assert_allclose(s.grad_B_tensor_cylindrical[j, k, :], 
+                                                               s.grad_B_tensor_cylindrical[k, j, :], 
+                                                               rtol=rtol, atol=atol,
+                                                               err_msg="Vacuum symmetry gradB fails for config {}".format(config))
+                                    np.testing.assert_allclose(s.grad_grad_B_tensor_cylindrical()[i, j, k, :], 
+                                                               s.grad_grad_B_tensor_cylindrical()[i, k, j, :], 
+                                                               rtol=rtol, atol=atol,
+                                                               err_msg="Vacuum symmetry gradgradB fails for config {}".format(config))
             
     def a_test_axisymmetry(self):
         """

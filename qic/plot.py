@@ -310,7 +310,7 @@ def create_subplot_mayavi(mlab, R, alphas, x_2D_plot, y_2D_plot, z_2D_plot,
         for j in range(len(alphas)):
             mlab.plot3d(fieldline_X_rotated[j], fieldline_Y_rotated[j]-shift_array[i], fieldline_Z_rotated[j], color=(0,0,0), line_width=0.002, tube_radius=0.008)
 
-def get_boundary(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, ntor=25):
+def get_boundary(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, ntor=25, phi1d = None):
     '''
     Function that, for a given near-axis radial coordinate r, outputs
     the [X,Y,Z,R] components of the boundary. The resolution along the toroidal
@@ -334,7 +334,11 @@ def get_boundary(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, n
         ZBC = np.zeros((int(2*ntor+1),int(mpol+1)))
 
     theta1D = np.linspace(0, 2*np.pi, ntheta)
-    phi1D = np.linspace(0, 2*np.pi, nphi)
+    if isinstance(phi1d, np.ndarray) or isinstance(phi1d, list):
+        phi1D = phi1d
+        nphi = len(phi1d)
+    else:
+        phi1D = np.linspace(0, 2*np.pi, nphi)
     phi2D, theta2D = np.meshgrid(phi1D, theta1D)
     R_2Dnew = np.zeros((ntheta, nphi))
     Z_2Dnew = np.zeros((ntheta, nphi))
@@ -351,9 +355,9 @@ def get_boundary(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, n
 
     return x_2D_plot, y_2D_plot, z_2D_plot, R_2Dnew
 
-def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections=8,
+def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections=8, mpol=13, ntor=25,
          fieldlines=False, savefig=None, colormap=None, azim_default=None, threeD=True, n_field_lines=1,
-         show=True, **kwargs):
+         show=True, axis = None, legend = True, **kwargs):
     """
     Plot the boundary of the near-axis configuration. There are two main ways of
     running this function.
@@ -401,14 +405,17 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
     .. image:: poloidalplot.png
        :width: 200
     """
-    x_2D_plot, y_2D_plot, z_2D_plot, R_2D_plot = self.get_boundary(r=r, ntheta=ntheta, nphi=nphi, ntheta_fourier=ntheta_fourier)
+    x_2D_plot, y_2D_plot, z_2D_plot, R_2D_plot = self.get_boundary(r=r, ntheta=ntheta, nphi=nphi, ntheta_fourier=ntheta_fourier, mpol = mpol, ntor = ntor)
     phi = np.linspace(0, 2 * np.pi, nphi)  # Endpoint = true and no nfp factor, because this is what is used in get_boundary()
     R_2D_spline = interp1d(phi, R_2D_plot, axis=1)
     z_2D_spline = interp1d(phi, z_2D_plot, axis=1)
     ## Poloidal plot
     phi1dplot_RZ = np.linspace(0, 2 * np.pi / self.nfp, nsections, endpoint=False)
-    fig_poloidal = plt.figure(figsize=(7, 5), dpi=80)
-    ax  = plt.gca()
+    if axis == None:
+        fig_poloidal = plt.figure(figsize=(7, 5), dpi=80)
+        ax  = plt.gca()
+    else:
+        ax = axis
     for i, phi in enumerate(phi1dplot_RZ):
         phinorm = phi * self.nfp / (2 * np.pi)
         if phinorm == 0:
@@ -432,13 +439,17 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
         color = next(ax._get_lines.prop_cycler)['color']
         # Plot location of the axis
         plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, label=label, color=color)
-        # Plot poloidal cross-section
-        plt.plot(R_2D_spline(phi), z_2D_spline(phi), color=color)
+        if threeD == True:
+            # Plot poloidal cross-section
+            plt.plot(R_2D_spline(phi), z_2D_spline(phi), color=color)
+        else:
+            plt.plot(R_2D_spline(phi), z_2D_spline(phi), color=color, **kwargs)
     plt.xlabel('R (meters)', fontsize=14)
     plt.ylabel('Z (meters)', fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=12)
     ax.tick_params(axis='both', which='minor', labelsize=12)
-    plt.legend(loc=2, prop={'size': 8})
+    if legend:
+        plt.legend(loc=2, prop={'size': 8})
     plt.tight_layout()
     ax.set_aspect('equal')
     if savefig != None:
@@ -469,7 +480,7 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
                 if colormap==None:
                     # Cmap similar to quasisymmetry papers
                     # cmap = clr.LinearSegmentedColormap.from_list('qs_papers',['#4423bb','#4940f4','#2e6dff','#0097f2','#00bacc','#00cb93','#00cb93','#7ccd30','#fbdc00','#f9fc00'], N=256)
-                    cmap = cm.viridis
+                    cmap = cm.RdBu
                     # Add a light source so the surface looks brighter
                     ls = LightSource(azdeg=0, altdeg=10)
                     cmap_plot = ls.shade(Bmag, cmap, norm=norm)
@@ -544,7 +555,9 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
                     # Close mayavi plots
                     mlab.close(all=True)
     else:
-        plt.show()
+        if show:
+                    # Show figures
+                    plt.show()
 
 def B_fieldline(self, r=0.1, alpha=0, phimax=None, nphi=400, show=True, savefig=None):
     '''
@@ -576,7 +589,7 @@ def B_fieldline(self, r=0.1, alpha=0, phimax=None, nphi=400, show=True, savefig=
     if show:
         plt.show()
 
-def B_contour(self, r=0.1, ntheta=100, nphi=120, ncontours=20, B0=1, show=True, savefig=None):
+def B_contour(self, r=0.1, ntheta=100, nphi=120, ncontours=20, B0=1, ax = None, show=True, savefig=None):
     '''
     Plot contours of constant B, with B the modulus of the
     magnetic field, as a function of Boozer coordinates theta and varphi
@@ -592,9 +605,10 @@ def B_contour(self, r=0.1, ntheta=100, nphi=120, ncontours=20, B0=1, show=True, 
     phi_array=np.linspace(0,2*np.pi/self.nfp,nphi)
     theta_2D, phi_2D = np.meshgrid(theta_array,phi_array)
     magB_2D = self.B_mag(r,theta_2D,phi_2D,Boozer_toroidal=True,B0=B0)
-    fig_B_contour, ax=plt.subplots(1,1)
+    if ax == None:
+        fig_B_contour, ax=plt.subplots(1,1)
     contourplot = ax.contour(phi_2D/np.pi, theta_2D/np.pi, magB_2D, ncontours, cmap=cm.plasma, linewidths=2.0)
-    fig_B_contour.colorbar(contourplot)
+    plt.colorbar(contourplot)
     # ax.set_title('|B| for r=' + str(r))
     ax.set_xlabel(r'Boozer $\varphi$', fontsize=16)
     ax.set_ylabel(r'Boozer $\theta$', fontsize=16)
