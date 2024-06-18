@@ -59,17 +59,20 @@ def plot(self, newfigure=True, show=True, savefig=None):
             plt.ylim(bottom=0)
         plt.xlim((0, self.phi[-1]))
 
-    subplot('R0')
-    subplot('Z0')
-    subplot('R0p')
-    subplot('Z0p')
-    subplot('R0pp')
-    subplot('Z0pp')
-    subplot('R0ppp')
-    subplot('Z0ppp')
+    if not self.frenet:
+        subplot('R0')
+        subplot('Z0')
+        subplot('R0p')
+        subplot('Z0p')
+        subplot('R0pp')
+        subplot('Z0pp')
+        subplot('R0ppp')
+        subplot('Z0ppp')
     subplot('curvature')
     subplot('torsion')
     subplot('sigma')
+    subplot('B1s')
+    subplot('B1c')
     subplot('X1s')
     subplot('X1c')
     subplot('Y1c')
@@ -113,30 +116,31 @@ def plot(self, newfigure=True, show=True, savefig=None):
         plt.title('alpha')
         plt.legend(loc=0, fontsize=5)
 
-        plt.subplot(nrows, ncols, jplot)
-        d_alpha_iota_d_varphi_der    = [self.d_alpha_iota_d_varphi]
-        d_alpha_notIota_d_varphi_der = [self.d_alpha_notIota_d_varphi]
-        d_alpha_der = [d_alpha_iota_d_varphi_der[0] * self.iota + d_alpha_notIota_d_varphi_der[0]]
-        ders = [1]
-        plt.plot(d_alpha_der[0], label='n=1')
-        plt.xlabel(r'$\phi$')
-        plt.title(r'$\alpha^{(n)}$')
-        self.d_alpha_der_diff = [d_alpha_der[0][-1]-d_alpha_der[0][0]]
-        for n in range(2,5):
-            d_alpha_iota_d_varphi_der.append(np.matmul(self.d_d_varphi,d_alpha_iota_d_varphi_der[n-2]))
-            d_alpha_notIota_d_varphi_der.append(np.matmul(self.d_d_varphi,d_alpha_notIota_d_varphi_der[n-2]))
-            d_alpha_der.append(d_alpha_iota_d_varphi_der[n-1] * self.iota + d_alpha_notIota_d_varphi_der[n-1])
-            self.d_alpha_der_diff.append(d_alpha_der[n-1][-1]-d_alpha_der[n-1][0])
-            ders.append(n)
-            plt.plot(d_alpha_der[n-1], label='n='+str(n))
-        plt.legend()
-        jplot += 1
+        if not self.frenet:
+            plt.subplot(nrows, ncols, jplot)
+            d_alpha_iota_d_varphi_der    = [self.d_alpha_iota_d_varphi]
+            d_alpha_notIota_d_varphi_der = [self.d_alpha_notIota_d_varphi]
+            d_alpha_der = [d_alpha_iota_d_varphi_der[0] * self.iota + d_alpha_notIota_d_varphi_der[0]]
+            ders = [1]
+            plt.plot(d_alpha_der[0], label='n=1')
+            plt.xlabel(r'$\phi$')
+            plt.title(r'$\alpha^{(n)}$')
+            self.d_alpha_der_diff = [d_alpha_der[0][-1]-d_alpha_der[0][0]]
+            for n in range(2,5):
+                d_alpha_iota_d_varphi_der.append(np.matmul(self.d_d_varphi,d_alpha_iota_d_varphi_der[n-2]))
+                d_alpha_notIota_d_varphi_der.append(np.matmul(self.d_d_varphi,d_alpha_notIota_d_varphi_der[n-2]))
+                d_alpha_der.append(d_alpha_iota_d_varphi_der[n-1] * self.iota + d_alpha_notIota_d_varphi_der[n-1])
+                self.d_alpha_der_diff.append(d_alpha_der[n-1][-1]-d_alpha_der[n-1][0])
+                ders.append(n)
+                plt.plot(d_alpha_der[n-1], label='n='+str(n))
+            plt.legend()
+            jplot += 1
 
-        plt.subplot(nrows, ncols, jplot)
-        plt.plot(ders,self.d_alpha_der_diff)
-        plt.xlabel(r'$n=$Order of the derivative')
-        plt.title(r'$\alpha^{(n)}(2\pi)-\alpha^{(n)}(0)$')
-        jplot += 1
+            plt.subplot(nrows, ncols, jplot)
+            plt.plot(ders,self.d_alpha_der_diff)
+            plt.xlabel(r'$n=$Order of the derivative')
+            plt.title(r'$\alpha^{(n)}(2\pi)-\alpha^{(n)}(0)$')
+            jplot += 1
     if self.order != 'r1':
         subplot('B20')
         if self.omn:
@@ -151,10 +155,10 @@ def plot(self, newfigure=True, show=True, savefig=None):
             subplot('B20QI_deviation')
             subplot('B2cQI_deviation')
             subplot('B2sQI_deviation')
-            subplot('B2c_array')
-            subplot('B2s_array')
+            subplot('B2c')
+            subplot('B2s')
     if self.omn:
-        subplot('d_over_curvature', data = self.d/self.curvature)
+        subplot('d_over_curvature', data = self.d_bar)
         subplot('gamma')
     if self.order != 'r1':
         if self.order != 'r2':
@@ -589,7 +593,7 @@ def B_fieldline(self, r=0.1, alpha=0, phimax=None, nphi=400, show=True, savefig=
     if show:
         plt.show()
 
-def B_contour(self, r=0.1, ntheta=100, nphi=120, ncontours=20, B0=1, ax = None, show=True, savefig=None):
+def B_contour(self, r=0.1, ntheta=100, nphi=120, ncontours=20, B0=1, ax = None, show=True, savefig=None, colorbar = True, fill = False, **kwargs):
     '''
     Plot contours of constant B, with B the modulus of the
     magnetic field, as a function of Boozer coordinates theta and varphi
@@ -607,20 +611,61 @@ def B_contour(self, r=0.1, ntheta=100, nphi=120, ncontours=20, B0=1, ax = None, 
     magB_2D = self.B_mag(r,theta_2D,phi_2D,Boozer_toroidal=True,B0=B0)
     if ax == None:
         fig_B_contour, ax=plt.subplots(1,1)
-    contourplot = ax.contour(phi_2D/np.pi, theta_2D/np.pi, magB_2D, ncontours, cmap=cm.plasma, linewidths=2.0)
-    plt.colorbar(contourplot)
-    # ax.set_title('|B| for r=' + str(r))
-    ax.set_xlabel(r'Boozer $\varphi$', fontsize=16)
-    ax.set_ylabel(r'Boozer $\theta$', fontsize=16)
-    ax.xaxis.set_major_formatter(tck.FormatStrFormatter('%g $\pi$'))
-    ax.yaxis.set_major_formatter(tck.FormatStrFormatter('%g $\pi$'))
-    ax.xaxis.set_major_locator(tck.MultipleLocator(base=0.5/self.nfp))
+
+    # Put all input parameters together 
+    linewidths=2.0
+    cmap = 'plasma'
+    vars = ['linewidths', 'cmap']
+    for var in vars:
+        if not var in kwargs:
+            kwargs[var] = eval(var)
+    if 'colors' in kwargs and 'cmap' in kwargs:
+        kwargs.pop('cmap')
+
+    if fill:
+        contourplot = ax.contourf(self.nfp*phi_2D/np.pi, theta_2D/np.pi, magB_2D, ncontours, **kwargs)
+    else:
+        contourplot = ax.contour(self.nfp*phi_2D/np.pi, theta_2D/np.pi, magB_2D, ncontours, **kwargs)
+    if colorbar:
+        plt.colorbar(contourplot)
+
+    ax.set_xlabel(r'$\varphi$')
+    ax.set_ylabel(r'$\theta$')
+    
+    def fraction_format(x, pos, nfp):
+        if x == 0.0:
+            return "0"
+        elif np.isclose(int(x)-x,0.):
+            if x == 1.0:
+                if nfp ==1: return f'$\pi$'
+                else: return f'$\pi/{nfp}$'
+            else:
+                if nfp ==1: return f'{int(x)}$\pi$'
+                else: return f'{int(x)}$\pi/{nfp}$'
+        else:
+            num = int(np.round(2*x))
+            if int(num/self.nfp) == num/nfp:
+                num = int(np.round(num/nfp))
+                if num == 1:
+                    return f'$\pi/2$'
+                else:
+                    return f'{num}$\pi/2$'
+            else:
+                if num == 1:
+                    return f'$\pi/{int(2*nfp)}$'
+                else:
+                    return f'{num}$\pi/{int(2*nfp)}$'
+    ax.xaxis.set_major_formatter(tck.FuncFormatter(lambda x, pos: fraction_format(x, pos, self.nfp)))
+    ax.yaxis.set_major_formatter(tck.FuncFormatter(lambda x, pos: fraction_format(x, pos, 1)))
+    ax.xaxis.set_major_locator(tck.MultipleLocator(base=0.5))
     ax.yaxis.set_major_locator(tck.MultipleLocator(base=0.5))
     plt.tight_layout()
     if savefig != None:
         fig_B_contour.savefig(savefig + '_B_contour.pdf')
     if show:
         plt.show()
+
+    return ax
 
 def B_densityplot(self, r=0.1, ntheta=250, nphi=250, B0=1, show=True, savefig=None):
     '''

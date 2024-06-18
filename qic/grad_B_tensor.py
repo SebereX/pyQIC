@@ -80,6 +80,10 @@ def calculate_grad_B_tensor(self):
     self.inv_L_grad_B = 1.0 / self.L_grad_B
     self.min_L_grad_B = fourier_minimum(self.L_grad_B)
     
+########################################
+# Have not touched the functions below #
+########################################
+
 def calculate_grad_grad_B_tensor(self, two_ways=False):
     """
     Compute the components of the grad grad B tensor, and the scale
@@ -116,8 +120,6 @@ def calculate_grad_grad_B_tensor(self, two_ways=False):
 
     iota_N0 = s.iotaN
     iota = s.iota
-    iota0 = iota
-    lp = np.abs(s.G0) / s.B0
 
     curvature = s.curvature
     torsion = s.torsion
@@ -125,20 +127,20 @@ def calculate_grad_grad_B_tensor(self, two_ways=False):
     lprime = d_l_d_varphi
 
     sG = s.sG
-    sign_G = s.sG
-    sign_psi = s.spsi
     B0 = s.B0
     Bbar = s.Bbar
     G0 = s.G0
     I2 = s.I2
     G2 = s.G2
-    p2 = s.p2
 
     B20 = s.B20
-    B2s = s.B2s_array
-    B2c = s.B2c_array
+    B2s = s.B2s
+    B2c = s.B2c
 
-    d_B0_d_varphi = np.matmul(s.d_d_varphi, B0)
+    if self.omn:
+        d_B0_d_varphi = np.matmul(s.d_d_varphi, B0)
+    else:
+        d_B0_d_varphi = np.zeros(s.nphi)
 
     d_X1s_d_varphi = s.d_X1s_d_varphi
     d_X1c_d_varphi = s.d_X1c_d_varphi

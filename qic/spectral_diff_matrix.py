@@ -32,3 +32,48 @@ def spectral_diff_matrix(n, xmin=0, xmax=2*np.pi):
     row1 = -col1
     D = 2 * np.pi / (xmax - xmin) * toeplitz(col1, r=row1)
     return D
+
+def finite_difference_matrix(N, order=2):
+    """
+    Creates a finite difference differentiation matrix for periodic functions.
+
+    Parameters:
+     - N (int): Number of grid points.
+     - order (int): Order of accuracy of the finite difference scheme (2, 4, or 6).
+
+    Returns:
+     - numpy.ndarray: Differentiation matrix of size (N, N).
+    """
+    # Grid spacing
+    h = 2 * np.pi/N
+
+    D = np.zeros((N, N))
+    
+    if order == 2:
+        # Second-order central finite difference
+        for i in range(N):
+            D[i, (i-1) % N] = -1 / (2 * h)
+            D[i, (i+1) % N] = 1 / (2 * h)
+    
+    elif order == 4:
+        # Fourth-order central finite difference
+        for i in range(N):
+            D[i, (i-2) % N] = 1 / (12 * h)
+            D[i, (i-1) % N] = -8 / (12 * h)
+            D[i, (i+1) % N] = 8 / (12 * h)
+            D[i, (i+2) % N] = -1 / (12 * h)
+    
+    elif order == 6:
+        # Sixth-order central finite difference
+        for i in range(N):
+            D[i, (i-3) % N] = -1 / (60 * h)
+            D[i, (i-2) % N] = 3 / (20 * h)
+            D[i, (i-1) % N] = -3 / (4 * h)
+            D[i, (i+1) % N] = 3 / (4 * h)
+            D[i, (i+2) % N] = -3 / (20 * h)
+            D[i, (i+3) % N] = 1 / (60 * h)
+    
+    else:
+        raise ValueError("Unsupported order. Choose 2, 4, or 6.")
+    
+    return D

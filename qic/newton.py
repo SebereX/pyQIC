@@ -4,11 +4,12 @@ This module contains a function for Newton's method.
 
 import logging
 import numpy as np
+from scipy.optimize import minimize, least_squares
 
 #logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def newton(f, x0, jac, niter=20, tol=1e-16, nlinesearch=8):
+def newton(f, x0, jac, niter=60, tol=1e-18, nlinesearch=20):
     """
     Solve a system of nonlinear equations using Newton's method with a
     line search.
@@ -26,7 +27,6 @@ def newton(f, x0, jac, niter=20, tol=1e-16, nlinesearch=8):
     initial_residual_norm = np.sqrt(np.sum(residual * residual))
     residual_norm = initial_residual_norm
     logger.info('Beginning Newton method. residual {}'.format(residual_norm))
-
     newton_tolerance_achieved = False
     for jnewton in range(niter):
         last_residual_norm = residual_norm
@@ -52,6 +52,11 @@ def newton(f, x0, jac, niter=20, tol=1e-16, nlinesearch=8):
             step_scale /= 2
             
         if residual_norm >= last_residual_norm:
+            # if jnewton == 0:
+                # opt = least_squares(f, x, ftol = tol, verbose = 2)
+                # x_best = opt.x
+            #     break
+            # else:
             logger.info('Line search failed to reduce residual')
             break
     return x_best

@@ -37,25 +37,12 @@ def calculate_r_singularity(self, high_order=False):
     Z2s = s.Z2s
     Z2c = s.Z2c
 
-    iota_N0 = s.iotaN
-    iota = s.iota
     lp = np.abs(s.G0) / s.B0
 
     curvature = s.curvature
     torsion = s.torsion
 
     nphi = s.nphi
-    sign_G = s.sG
-    sign_psi = s.spsi
-    B0 = s.B0
-    G0 = s.G0
-    I2 = s.I2
-    G2 = s.G2
-    p2 = s.p2
-
-    B20 = s.B20
-    B2s = s.B2s
-    B2c = s.B2c
 
     d_X1c_d_varphi = s.d_X1c_d_varphi
     d_X1s_d_varphi = s.d_X1s_d_varphi
@@ -73,13 +60,6 @@ def calculate_r_singularity(self, high_order=False):
     d_Z20_d_varphi = s.d_Z20_d_varphi
     d_Z2s_d_varphi = s.d_Z2s_d_varphi
     d_Z2c_d_varphi = s.d_Z2c_d_varphi
-
-    d2_X1c_d_varphi2 = s.d2_X1c_d_varphi2
-    d2_Y1s_d_varphi2 = s.d2_Y1s_d_varphi2
-    d2_Y1c_d_varphi2 = s.d2_Y1c_d_varphi2
-
-    d_curvature_d_varphi = s.d_curvature_d_varphi
-    d_torsion_d_varphi = s.d_torsion_d_varphi
 
     r_singularity_basic_vs_varphi = np.zeros(nphi)
     r_singularity_vs_varphi = np.zeros(nphi)

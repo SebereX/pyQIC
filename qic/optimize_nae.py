@@ -48,6 +48,7 @@ def opt_fun_stel(x_iter, stel, x_param_label, fun_opt, info = {'Nfeval':0}, res_
     else:
         for ind, label in enumerate(x_param_label):
             x_iter_all[stel.names.index(label)] = x_iter[ind]
+
     # Construct the new nae solution
     stel.set_dofs(x_iter_all)
     # Evaluate the residual
@@ -180,13 +181,15 @@ def optimise_params(stel, x_param_label, fun_opt = fun, verbose = 0, maxiter = 2
     # Initialise the residual history 
     res_history = []
     res_history.append(fun_opt(stel, extras))
-    print(stel.order)
+
     # Optimisation (using scipy.optimize.minimize)
     if scale:
         # If scale, then limited optimisation relative to initial values
-        opt = optimize.minimize(opt_fun_stel, x0, args=(stel, x_parameter_label_checked, fun_opt, {'Nfeval':0}, res_history, verbose, extras, x0_all, thresh), method=method, tol=1e-3, options={'maxiter': maxiter, 'maxfev': maxfev})
+        opt = optimize.minimize(opt_fun_stel, x0, args=(stel, x_parameter_label_checked, fun_opt, {'Nfeval':0}, res_history, verbose, extras, x0_all, thresh),\
+                                method=method, tol=1e-3, options={'maxiter': maxiter, 'maxfev': maxfev})
     else:
-        opt = optimize.minimize(opt_fun_stel, x0, args=(stel, x_parameter_label_checked, fun_opt, {'Nfeval':0}, res_history, verbose, extras), method=method, tol=1e-3, options={'maxiter': maxiter, 'maxfev': maxfev})
+        opt = optimize.minimize(opt_fun_stel, x0, args=(stel, x_parameter_label_checked, fun_opt, {'Nfeval':0}, res_history, verbose, extras), method=method, \
+                                tol=1e-3, options={'maxiter': maxiter, 'maxfev': maxfev})
 
     # Make sure that the final form of stel is with the optimised paramters
     x = stel.get_dofs()

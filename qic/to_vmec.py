@@ -107,11 +107,11 @@ def to_vmec(self, filename, r=0.1, params=dict(), ntheta=20, ntorMax=14):
     file_object.write('!----- Axis Parameters -----\n')
     # To convert sin(...) modes to vmec, we introduce a minus sign. This is because in vmec,
     # R and Z ~ sin(m theta - n phi), which for m=0 is sin(-n phi) = -sin(n phi).
-    file_object.write('  RAXIS_CC = '+str(self.rc)[1:-1]+'\n')
+    file_object.write('  RAXIS_CC = '+str(self.Raxis["input_value"]["cos"])[1:-1]+'\n')
     if self.lasym:
-        file_object.write('  RAXIS_CS = '+str(-self.rs)[1:-1]+'\n')
-        file_object.write('  ZAXIS_CC = '+str(self.zc)[1:-1]+'\n')
-    file_object.write('  ZAXIS_CS = '+str(-self.zs)[1:-1]+'\n')
+        file_object.write('  RAXIS_CS = '+str(-np.array(self.Raxis["input_value"]["sin"]))[1:-1]+'\n')
+        file_object.write('  ZAXIS_CC = '+str(self.Zaxis["input_value"]["cos"])[1:-1]+'\n')
+    file_object.write('  ZAXIS_CS = '+str(-np.array(self.Zaxis["input_value"]["sin"]))[1:-1]+'\n')
     file_object.write('!----- Boundary Parameters -----\n')
     for m in range(mpol+1):
         for n in range(-ntor,ntor+1):
