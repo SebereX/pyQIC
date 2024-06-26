@@ -44,18 +44,18 @@ def evaluate_input_on_grid(self, input_quantity, grid, derivative = None, period
                 # Works well when the grid points are included in the original domain and a difference of 1 in lengths
                 # This is meant to deal with the situation when we change nphi to be odd 
                 if diff_length == 1:
-                        if periodic:
-                            # Compute spline
-                            sp = fourier_interpolation(input_quantity["input_value"], grid * self.nfp)
-                            # Evaluate on new grid
-                            input_quantity["value_grid"] = sp
-                        else: 
-                            # Grid of the array provided
-                            x_ref = np.linspace(0, 1, len(input_quantity["input_value"]), endpoint = False) * 2*np.pi/self.nfp
-                            # Compute spline
-                            sp = make_interp_spline(x_ref, input_quantity["input_value"])
-                            # Evaluate on new grid
-                            input_quantity["value_grid"] = sp(grid)    
+                    if periodic:
+                        # Compute spline
+                        sp = fourier_interpolation(input_quantity["input_value"], grid * self.nfp)
+                        # Evaluate on new grid
+                        input_quantity["value_grid"] = sp
+                    else: 
+                        # Grid of the array provided
+                        x_ref = np.linspace(0, 1, len(input_quantity["input_value"]), endpoint = False) * 2*np.pi/self.nfp
+                        # Compute spline
+                        sp = make_interp_spline(x_ref, input_quantity["input_value"], k=5)
+                        # Evaluate on new grid
+                        input_quantity["value_grid"] = sp(grid)    
                 else:
                     raise ValueError("The input array does not match the length of the grid for an input_type = 'grid'. It is possible that the input nphi was not odd and it was changed by the code.")
             else:
@@ -74,6 +74,9 @@ def evaluate_input_on_grid(self, input_quantity, grid, derivative = None, period
             spline_input = make_interp_spline(x_in_periodic, y_in_periodic, bc_type = 'periodic', k = 7) 
             input_quantity["spline"] = spline_input
             input_quantity["value_grid"] = spline_input(grid)
+        elif input_quantity["type"] == 'function':
+            # Evaluate the function on the grid
+            input_quantity["value_grid"] = input_quantity["function"](grid)
         else:
             raise ValueError('Unrecognised input type!')
         

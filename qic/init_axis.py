@@ -6,25 +6,30 @@ curvature and torsion from the magnetix axis shape.
 import logging
 import numpy as np
 from scipy.interpolate import CubicSpline as spline
-from scipy.interpolate import BSpline, make_interp_spline
+from scipy.interpolate import BSpline, make_interp_spline, PchipInterpolator
 from .spectral_diff_matrix import spectral_diff_matrix, finite_difference_matrix
 from .util import fourier_minimum
 from .input_structure import evaluate_input_on_grid
 from .fourier_interpolation import fourier_interpolation_matrix, make_interp_fourier
-from .reverse_frenet_serret import invert_frenet_axis
+from .reverse_frenet_serret import invert_frenet_axis, to_Fourier_axis
 
 #logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Define periodic spline interpolant conversion used in several scripts and plotting
-def convert_to_spline(self,array):
+def convert_to_spline(self,array, half_period = False):
     # def sp(x):
     #     fun = make_interp_fourier(array)
     #     return fun(x, self.phi[0], self.nfp)
     if isinstance(array, float):
         sp=spline(np.append(self.phi,2*np.pi/self.nfp+self.phi[0]), np.ones(self.nphi + 1)*array, bc_type='periodic')
     else:
-        sp=spline(np.append(self.phi,2*np.pi/self.nfp+self.phi[0]), np.append(array,array[0]), bc_type='periodic')
+        if half_period:
+            phi_ext = np.concatenate(tuple(self.phi + 2*np.pi/self.nfp*j for j in range(self.nfp)))
+            temp = np.concatenate(tuple(array*(-1)**j for j in range(self.nfp)))
+            sp = PchipInterpolator(phi_ext, temp, axis=0, extrapolate='periodic')
+        else:
+            sp=spline(np.append(self.phi,2*np.pi/self.nfp+self.phi[0]), np.append(array,array[0]), bc_type='periodic')
     return sp
 
 def init_axis(self, omn_complete = True):
@@ -35,7 +40,7 @@ def init_axis(self, omn_complete = True):
     if self.frenet:
         # Construct directly from the inputs
         varphi = self.varphi
-        self.curvature = self.evaluate_input_on_grid(self.curvature_in, varphi)
+        self.curvature = self.evaluate_input_on_grid(self.curvature_in, varphi, periodic = False)
         self.torsion = self.evaluate_input_on_grid(self.torsion_in, varphi)
         self.ell = self.evaluate_input_on_grid(self.ell_in, varphi, periodic = False)
         self.axis_length = self.nfp * self.L_in
@@ -49,12 +54,16 @@ def init_axis(self, omn_complete = True):
         if self.diff_finite:
             if self.diff_finite == 2:
                 self.d_d_phi = finite_difference_matrix(self.nphi, order = 2) * self.nfp
+                self.diff_order = 2
             elif self.diff_finite == 6:
                 self.d_d_phi = finite_difference_matrix(self.nphi, order = 6) * self.nfp
+                self.diff_order = 2
             else:
                 self.d_d_phi = finite_difference_matrix(self.nphi, order = 4) * self.nfp
+                self.diff_order = 4
         else:
             self.d_d_phi = spectral_diff_matrix(self.nphi, xmin = 0, xmax = 2*np.pi/self.nfp)
+            self.diff_order = None
 
         # It is also convenient to define interpolation to phi = 0. The grid is not shifted. 
         # self.interpolateTo0 = fourier_interpolation_matrix(self.nphi, 0)
@@ -64,20 +73,22 @@ def init_axis(self, omn_complete = True):
         # some discontinuity, might need an additional optimisation to close the curve)
         # It modifies varphi, curvature, torsion, ell and the Frenet geometry accordingly, using phi
         # as the cylindrical coordinate
-        invert_frenet_axis(self, self.curvature, self.torsion, self.ell, self.varphi, full_axis = True)
-        varphi = self.varphi
+        # varphi_old = self.varphi.copy()
 
-        # Evaluate B0
-        B0 = self.evaluate_input_on_grid(self.B0_in, varphi)
-        Bbar = 1 # self.spsi * np.mean(self.B0)
-        self.B0_spline = self.convert_to_spline(B0)
+        flag_func = True if ("function_ell" in self.curvature_in) else False
+        _ = invert_frenet_axis(self, self.curvature, self.torsion, self.ell, self.varphi, full_axis = True, func = flag_func)
 
-        # Construct nu (this construction is sort of artificial to an extent, as phi is a regular grid
-        # on which varphi is provided; not necessarily cylindrical)
-        nu = varphi - self.phi
-        self.nu_spline = self.convert_to_spline(nu)
-        self.nu_spline_of_varphi = spline(np.append(self.varphi,self.varphi[0]+2*np.pi/self.nfp), \
-                                          np.append(self.varphi-self.phi,self.varphi[0]-self.phi[0]), bc_type='periodic')
+        # varphi = self.varphi
+        
+        # Obtain axis description as Fourier components : important for output to VMEC (at elast approximately)
+        ntor = 10
+        rc, rs, zc, zs = to_Fourier_axis(self.R0, self.Z0, self.nfp, ntor = ntor, lasym = False, phi_in = self.phi)
+        self.Raxis = {"type": "fourier", "input_value": {}}
+        self.Zaxis = {"type": "fourier", "input_value": {}}
+        self.Raxis["input_value"]["cos"] = rc
+        self.Raxis["input_value"]["sin"] = rs
+        self.Zaxis["input_value"]["cos"] = zc
+        self.Zaxis["input_value"]["sin"] = zs
 
         # Ell and phi relation
         secular_part = self.phi / (2*np.pi/self.nfp) * self.L_in
@@ -86,29 +97,64 @@ def init_axis(self, omn_complete = True):
         d2_l_d_phi2 = np.matmul(self.d_d_phi, d_l_d_phi) 
         d3_l_d_phi3 = np.matmul(self.d_d_phi, d2_l_d_phi2)
 
-        # G0 evaluation
+        # Picard iteration is used to find varphi and G0
+        # Initialise nu = varphi - phi, which must be periodic
+        nu = np.zeros((self.nphi,))
+        num_iter_max = 20   # Max number of iterations
+        for j in range(num_iter_max):
+            # Nu from previous iteration for reference
+            last_nu = nu
+            # Update varphi
+            varphi = self.phi + nu
+            # In here B0_in is assumed to be provided in varphi
+            B0 = self.evaluate_input_on_grid(self.B0_in, varphi) 
+            # Construct G0 (everything is in the equally spaced phi grid)
+            abs_G0 = np.sum(B0 * d_l_d_phi) / self.nphi
+            # Update nu by inverting d varphi / d phi - 1 = d nu / d phi and 
+            # d l/d phi = (abs_G0/B0) d varphi/d phi
+            rhs = -1 + d_l_d_phi * B0 / abs_G0
+            nu = np.linalg.solve(self.d_d_phi+self.interpolateTo0, rhs) # Include interpolateTo0 to make matrix invertible, nu = 0 at origin
+            # Relative error in nu
+            norm_change = np.sqrt(sum((nu-last_nu)**2)/self.nphi)
+            logger.debug("  Iteration {}: |change to nu| = {}".format(j, norm_change))
+            # Exit iteration if nu converged
+            if norm_change < 1e-17:
+                break
+
+        # Final value for varphi
+        varphi = self.phi + nu
+        self.varphi = varphi
+
+        # Construct nu
+        self.nu_spline = self.convert_to_spline(nu)
+        self.nu_spline_of_varphi = spline(np.append(self.varphi,self.varphi[0]+2*np.pi/self.nfp), \
+                                          np.append(self.varphi-self.phi,self.varphi[0]-self.phi[0]), bc_type='periodic')
+
+        # Final value for B0
+        B0 = self.evaluate_input_on_grid(self.B0_in, varphi)
+        Bbar = 1 # self.spsi * np.mean(self.B0)
+        self.B0_spline = self.convert_to_spline(B0)
+
+        # Final value for G0
         abs_G0 = np.sum(B0 * d_l_d_phi) / self.nphi
-        # abs_G0 = np.mean(d_l_d_phi * B0 / (np.matmul(self.d_d_phi, nu) + 1))  # The variation should be 0
         G0 = self.sG*abs_G0
         abs_G0_over_B0 = np.abs(G0/Bbar)
 
+        # Length along the axis
+        self.d_l_d_varphi = self.sG * G0 / self.B0   
+
         # Derivative in varphi
-        nphi = self.nphi
-        # self.d_d_varphi = self.d_d_phi
-        self.d_d_varphi = np.zeros((nphi, nphi))
-        for j in range(nphi):
+        self.d_d_varphi = np.zeros((self.nphi, self.nphi))
+        for j in range(self.nphi):
             self.d_d_varphi[j,:] = self.d_d_phi[j,:] * self.sG * G0 / (self.B0[j] * d_l_d_phi[j])
-        secular_part = self.varphi / (2*np.pi/self.nfp) * self.L_in
-        non_secular_part = self.ell - secular_part
-        self.d_l_d_varphi = self.L_in / (2*np.pi/self.nfp) + np.matmul(self.d_d_varphi, non_secular_part) 
 
         ## Evaluation of d ##
         if not self.omn:
             self.d_bar = self.etabar / curvature
         else:
-            d = np.zeros(nphi)
+            d = np.zeros(self.nphi)
             if isinstance(self.d_in, dict):
-                d += self.evaluate_input_on_grid(self.d_in, varphi)
+                d += self.evaluate_input_on_grid(self.d_in, varphi, periodic = False)
             if isinstance(self.d_over_curvature_in, dict):
                 dbar = self.evaluate_input_on_grid(self.d_over_curvature_in, varphi) 
                 d += dbar * self.curvature
@@ -192,7 +238,7 @@ def init_axis(self, omn_complete = True):
                         Complete harmonic content to include curvature vanishing points at the centre of the grid.
                         This is what was implemented. Should be possible to quite easily improve.
                         """
-                        if (rs ==[]) or not (np.max(np.abs(rs)) == 0.0):
+                        if not(np.max(np.abs(rs)) == 0.0):
                             raise KeyError("Unable to complete the axis with non-stellarator symmetric R.")
                         if len(rc)>6:
                             rc[6]=-(1 + rc[2] + rc[4] + (rc[2] + 4 * rc[4]) * 4 * nfp * nfp) / (1 + 36 * nfp * nfp)
@@ -489,6 +535,7 @@ def init_axis(self, omn_complete = True):
         ## Compute helicity ##
         self._determine_helicity()
         self.N_helicity = - self.helicity * self.nfp
+        self.flag_half = (np.mod(self.helicity, 1) == 0.5) # If half helicity, take into account the flip of sign
     
         # Add all results to self:
         self.G0 = G0; self.abs_G0_over_B0 = abs_G0_over_B0

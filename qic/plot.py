@@ -36,7 +36,7 @@ def plot(self, newfigure=True, show=True, savefig=None):
         if self.omn:
             nrows=6
     elif self.order == 'r3':
-        nrows = 6
+        nrows = 7
         ncols = 8
     else:
         raise RuntimeError('Should not get here')

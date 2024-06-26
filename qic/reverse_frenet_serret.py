@@ -6,12 +6,43 @@ Given the Frenet description of a curve, construct its cylindrical coordinate fo
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.integrate import solve_ivp
+from scipy.integrate import solve_ivp, cumulative_trapezoid
 from scipy.interpolate import PchipInterpolator
 from sklearn.decomposition import PCA
 from scipy.spatial.transform import Rotation as R
+from qic.fourier_interpolation import fourier_interpolation
 
 logger = logging.getLogger(__name__)
+
+def smooth_fourier(data, nfp, n_harm, phi_out, even = True):
+    # Input grid
+    nphi = len(data)
+    phi_in = np.linspace(0, 2 * np.pi / nfp, nphi, endpoint=False)
+
+    # Harmonic components of axis position
+    data_harm = np.zeros(int(n_harm + 1))
+    data_harm[0] = np.sum(data) / nphi            
+    factor = 2 / nphi
+    if even:
+        smoothed_data = np.full(len(phi_out), fill_value = data_harm[0])
+    else:
+        smoothed_data = np.zeros(len(phi_out))
+
+    for n in range(1, n_harm+1):
+        angle = - n * nfp * phi_in
+        factor2 = factor
+        # The next 2 lines ensure inverse Fourier transform(Fourier transform) = identity
+        # if n == 0: factor2 = factor2 / 2
+        if even:
+            cosangle = np.cos(angle)
+            data_harm[n] = np.sum(data * cosangle * factor2)
+            smoothed_data += data_harm[n] * np.cos(n * nfp * phi_out)
+        else:
+            sinangle = np.sin(angle)
+            data_harm[n] = np.sum(data * sinangle * factor2)
+            smoothed_data += data_harm[n] * np.sin(n * nfp * phi_out)
+
+    return smoothed_data
 
 def frenet_serret(t, y, kappa_func, tau_func):
     # Frenet-Serret system of equations
@@ -20,6 +51,7 @@ def frenet_serret(t, y, kappa_func, tau_func):
     T = y[:3]
     N = y[3:6]
     B = y[6:9]
+    
     ## Curvature and torsion discrete ##
     kappa = kappa_func(t)
     tau = tau_func(t)
@@ -39,12 +71,17 @@ def solve_frenet_serret(kappa, tau, ell):
     
     y0 = np.concatenate((T0, N0, B0))
     
-    # Periodic spline interpolation for kappa and tau
-    kappa_func = PchipInterpolator(ell, kappa, axis=0, extrapolate='periodic')
-    tau_func = PchipInterpolator(ell, tau, axis=0, extrapolate='periodic')
+    if callable(kappa) and callable(tau):
+        kappa_func = kappa
+        tau_func = tau
+    else:
+        # Periodic spline interpolation for kappa and tau
+        kappa_func = PchipInterpolator(ell, kappa, axis=0)
+        tau_func = PchipInterpolator(ell, tau, axis=0)
 
     # Solve ODE
-    solution = solve_ivp(frenet_serret, [ell[0], ell[-1]], y0, t_eval=ell, args=(kappa_func, tau_func), method='RK45')
+    solution = solve_ivp(frenet_serret, [ell[0], ell[-1]], y0, t_eval=ell, args=(kappa_func, tau_func), \
+                         method='DOP853', rtol = 1e-13, atol = 1e-13)
     
     # Separate basis vectors
     T = solution.y[:3].T
@@ -87,50 +124,11 @@ def align_with_min_z_excursion(position):
     
     return transformed_position, centroid, rotation_matrix
 
-def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_cyl = None, full_axis = True):
+def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_cyl = None, full_axis = True, flip = True, minimal = False, func = False):
     ## Complete the curve ##
     # The inputs are assumed to be in the [0,2pi/N) grid. We extend them in field period and to include the last point
 
     if full_axis:
-        # Torsion
-        tau = torsion.copy()
-        if isinstance(tau, list):
-            tau += (self.nfp - 1) * torsion
-            tau += [tau[0]]   # Enpoint
-        elif isinstance(tau, np.ndarray):
-            for i in range(self.nfp - 1):
-                # Important to add a sign from period to period (because of half helicity)
-                tau = np.concatenate((tau, torsion))
-            tau = np.append(tau, tau[0])
-        else:
-            raise TypeError('Invalid type for torsion input.')
-
-        # Curvature: in this case we need to take the negative sign flip between field periods
-        kappa = curvature.copy()
-        if isinstance(kappa, list):
-            kappa = np.array(kappa)
-            curvature = np.array(curvature)
-        if isinstance(kappa, np.ndarray):
-            for j in range(self.nfp - 1):
-                # Important to add a sign from period to period (because of half helicity)
-                kappa = np.concatenate((kappa, (-1)**(j+1)*curvature))
-            kappa = np.append(kappa, kappa[0])
-        else:
-            raise TypeError('Invalid type for curvature input.')
-
-        # ell
-        ell_in = ell.copy()
-        ell = ell_in.copy()
-        if isinstance(ell, list):
-            ell = np.array(ell)
-            ell_in = np.array(ell)   # Enpoint
-        if isinstance(ell, np.ndarray):
-            for i in range(self.nfp - 1):
-                ell = np.concatenate((ell, ell_in + (i+1)*self.L_in))
-            ell = np.append(ell, self.nfp * self.L_in)
-        else:
-            raise TypeError('Invalid type for torsion input.')
-
         # varphi
         varphi_in = varphi.copy()
         varphi = varphi_in.copy()
@@ -144,7 +142,54 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
         else:
             raise TypeError('Invalid type for torsion input.')
         
+        # ell
+        ell_in = ell.copy()
+        ell = ell_in.copy()
+        if isinstance(ell, list):
+            ell = np.array(ell)
+            ell_in = np.array(ell)   # Enpoint
+        if isinstance(ell, np.ndarray):
+            for i in range(self.nfp - 1):
+                ell = np.concatenate((ell, ell_in + (i+1)*self.L_in))
+            ell = np.append(ell, self.nfp * self.L_in)
+        else:
+            raise TypeError('Invalid type for torsion input.')
+
+        if func:
+            # As a function of ell
+            tau = self.torsion_in["function_ell"]
+            kappa = self.curvature_in["function_ell"]
+        else:
+            # Torsion
+            tau = torsion.copy()
+            if isinstance(tau, list):
+                tau += (self.nfp - 1) * torsion
+                tau += [tau[0]]   # Enpoint
+            elif isinstance(tau, np.ndarray):
+                for i in range(self.nfp - 1):
+                    tau = np.concatenate((tau, torsion))
+                tau = np.append(tau, tau[0])
+            else:
+                raise TypeError('Invalid type for torsion input.')
+
+            # Curvature: in this case we need to take the negative sign flip between field periods
+            kappa = curvature.copy()
+            if isinstance(kappa, list):
+                kappa = np.array(kappa)
+                curvature = np.array(curvature)
+            if isinstance(kappa, np.ndarray):
+                for j in range(self.nfp - 1):
+                    if flip:
+                        # Important to add a sign from period to period (because of half helicity)
+                        kappa = np.concatenate((kappa, (-1)**(j+1)*curvature))
+                    else:
+                        kappa = np.concatenate((kappa, curvature))
+                kappa = np.append(kappa, kappa[0])
+            else:
+                raise TypeError('Invalid type for curvature input.')
+
     else:
+        print("WARNING! Should run with full axis.")
         tau = torsion.copy()
         kappa = curvature.copy()
         ell = ell.copy()
@@ -155,7 +200,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
     ##############################
     T, N, B = solve_frenet_serret(kappa, tau, ell)
     position = integrate_tangent(T, ell)
-
+    
     #####################
     # CHOOSE THE Z AXIS #
     #####################
@@ -175,7 +220,8 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
 
     # Check whether the sense of the axis is in the positive cylindrical angle
     sense_axis = (phi[1] % (2*np.pi)) - (phi[0] % (2*np.pi))
-    if sense_axis < 0:
+
+    if sense_axis < 0 or sense_axis > np.pi: # Care for potential sudden jump
         # Change coordinates accordingly
         Z = -Z
         phi = -phi
@@ -199,51 +245,123 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
 
         return new_vector
 
+    mismatch = [T[-1]-T[0], N[-1]+N[0],B[-1]+B[0], position[-1] - position[0]]
+
+    if minimal:
+        return mismatch
+    
+    print(mismatch)
+
     aligned_T = change_vector_to_cylindrical(phi, aligned_T)
     aligned_N = change_vector_to_cylindrical(phi, aligned_N)
     aligned_B = change_vector_to_cylindrical(phi, aligned_B)
 
     # Redefine the cylindrical angle so that the first point is phi = 0 (the cylindrical representation should not change)
-    phi = phi - phi[0]
+    # import matplotlib.pyplot as plt
+    # plt.plot(phi)
+    # plt.plot(np.unwrap(phi))
+    phi = np.unwrap(phi)
+    phi = (phi-phi[0])/phi[-1]*2*np.pi
+    # phi = (phi - phi[0]) % (2*np.pi)
+    # plt.plot(phi-varphi)
+    # plt.show()
 
     ################
     # SPLINES OF r #
     ################
     # Function to make splines
-    def make_spline(grid, array, periodic = True):
+    def make_spline(grid, array, periodic = True, half = False):
+        if half:
+            sign_half = -1
+        else:
+            sign_half = 1
         if periodic:
-            wrapped_grid = grid[:-1] % (2*np.pi)
+            wrapped_grid = grid[:-1]
             # ind_wrap = np.argsort(wrapped_grid)
             if len(np.shape(array)) > 1:
                 sp = []
                 for j in range(3):
-                    sp.append([PchipInterpolator(wrapped_grid, array[:-1,j], axis=0, extrapolate='periodic')])
+                    sp_temp = PchipInterpolator(np.append(wrapped_grid, wrapped_grid[0] + 2*np.pi),\
+                                                 np.append(array[:-1,j], sign_half*array[0,j]), axis=0, extrapolate=False)
+                    sp_cyclic = lambda x: sp_temp(x % (2*np.pi))
+                    sp.append([sp_cyclic])
             else:
-                sp = PchipInterpolator(wrapped_grid, array[:-1], axis=0, extrapolate='periodic')
+                sp_temp = PchipInterpolator(np.append(wrapped_grid, wrapped_grid[0] + 2*np.pi),\
+                                                 np.append(array[:-1], sign_half*array[0]), axis=0, extrapolate=False)
+                sp = lambda x: sp_temp(x % (2*np.pi))
         else:
-            wrapped_grid = grid[:-1] % (2*np.pi)
-            sp = PchipInterpolator(wrapped_grid, array[:-1])
+            wrapped_grid = grid
+            sp = PchipInterpolator(wrapped_grid, array)
         return sp
+    
+    # def make_sym_spline(grid, array, half = False, even = True):
+    #     sgn_half = -1 if flag_half else 1
+
+    #     sp_temp = make_spline(grid, array)
+    #     phi_centred = np.linspace(0, 2*np.pi/self.nfp, self.nphi)
+    #     smoothed_data = smooth_fourier(np.concatenate((sp_temp(phi_centred),sgn_half*sp_temp(phi_centred))), \
+    #                                     self.nfp, n_harm = 20, phi_out = grid/2, even = even)
+        
+    #     sp = make_spline(grid, smoothed_data, True, half)
+    #     return sp
 
     # Periodic spline interpolation for kappa and tau
+    flag_half = self.flag_half
+
     self.R0_func = make_spline(phi, R)
     self.Z0_func = make_spline(phi, Z)
 
+    if func:
+        kappa = kappa(ell)
+        tau = tau(ell)
+        
     curvature_func = make_spline(phi, kappa)
     torsion_func = make_spline(phi, tau)
     ell_func = make_spline(phi, ell, periodic = False)
-    varphi_func = make_spline(phi, varphi, periodic = False)
+    # varphi_func = make_spline(phi, varphi, periodic = False)
 
-    # Due to sign, for half helicities, the configurations have sign flips in normal/binormal
-    self.normal_R_spline = make_spline(phi, aligned_N[:,0], periodic = False)
-    self.normal_phi_spline = make_spline(phi, aligned_N[:,1], periodic = False)
-    self.normal_z_spline = make_spline(phi, aligned_N[:,2], periodic = False)
-    self.binormal_R_spline = make_spline(phi, aligned_B[:,0], periodic = False)
-    self.binormal_phi_spline = make_spline(phi, aligned_B[:,1], periodic = False)
-    self.binormal_z_spline = make_spline(phi, aligned_B[:,2], periodic = False)
+    # Check if the phi grid has the right bounds
+    # print("Phi end: ", phi[-1] - 2*np.pi)
+    # import matplotlib.pyplot as plt
+    # plt.plot(phi)
+    # plt.show()
+    # ind_period = next((index for index, value in enumerate(phi - 2*np.pi/self.nfp) if value > 0), None)
+    # varphi_iter = varphi.copy()
+    # ind = 0
+    # res = 100
+    # import matplotlib.pyplot as plt
+    # while res > 1e-6 or ind > 50:
+    #     B0 = self.evaluate_input_on_grid(self.B0_in, varphi_iter)
+    #     varphi_new = cumulative_trapezoid(B0, ell, initial=0.0)
+    #     varphi_new = varphi_new/varphi_new[-1]*2*np.pi/self.L_in/self.nfp
+    #     res = np.mean(np.abs(varphi_new - varphi_iter))
+    #     varphi_iter = varphi_new
+    #     ind += 1
+    #     print(ind, res)
+    #     plt.plot(varphi_new)
+    # plt.show()
+    # print(phi[-1])
+    # varphi = varphi_iter
+
+    # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
+    # a whole 2pi turn, and will be discontinuous at phi = 0
+    self.normal_R_spline = make_spline(phi, aligned_N[:,0], half = flag_half)
+    self.normal_phi_spline = make_spline(phi, aligned_N[:,1], half = flag_half)
+    self.normal_z_spline = make_spline(phi, aligned_N[:,2], half = flag_half)
+    self.binormal_R_spline = make_spline(phi, aligned_B[:,0], half = flag_half)
+    self.binormal_phi_spline = make_spline(phi, aligned_B[:,1], half = flag_half)
+    self.binormal_z_spline = make_spline(phi, aligned_B[:,2], half = flag_half)
     self.tangent_R_spline = make_spline(phi, aligned_T[:,0])
     self.tangent_phi_spline = make_spline(phi, aligned_T[:,1])
     self.tangent_z_spline = make_spline(phi, aligned_T[:,2])
+
+    # print('*')
+    # import matplotlib.pyplot as plt
+    # phi_ext = np.linspace(-1,1,10000)*2*np.pi
+    # plt.plot(phi_ext, self.normal_R_spline(phi_ext))
+    # plt.plot(phi_ext, self.normal_phi_spline(phi_ext))
+    # plt.plot(phi_ext, self.normal_z_spline(phi_ext))
+    # plt.show()
 
     ##############################
     # EVALUATE ON A REGULAR GRID #
@@ -285,9 +403,21 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
     # Resample the curvature and torsion: this gives potential issues with interpolation etc.
     # self.phi = phi # if we insist on a regular varphi grid
     self.curvature = curvature_func(phi_new)
+    # self.curvature = smooth_fourier(np.concatenate((self.curvature,sgn_half*self.curvature)), self.nfp, n_harm = 20, phi_out = phi_new/2, \
+    #                                even = flag_half)
+    
     self.torsion = torsion_func(phi_new)
-    self.ell = ell_func(phi_new)
-    self.varphi = varphi_func(phi_new)
+    # self.torsion = smooth_fourier(self.torsion, self.nfp, n_harm = 20, phi_out = phi_new, even = True)
+
+    self.ell = ell_func(phi_new) # /ell_func(2*np.pi/self.nfp)*self.L_in
+    phi_centred = np.linspace(0, 2*np.pi/self.nfp, self.nphi)
+    self.ell = phi_new / (2*np.pi/self.nfp) * self.L_in + \
+                smooth_fourier(ell_func(phi_centred) - phi_centred / (2*np.pi/self.nfp) * self.L_in, \
+                                self.nfp, n_harm = 30, phi_out = phi_new, even = False)
+
+    # self.varphi = varphi_func(phi_new) # /varphi_func(2*np.pi/self.nfp)*2*np.pi/self.nfp
+    # self.varphi = phi_new + smooth_fourier(varphi_func(phi_centred) - phi_centred, \
+    #                         self.nfp, n_harm = 30, phi_out = phi_new, even = False)
 
     #############
     # PLOT AXIS #
@@ -357,7 +487,9 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
         plt.title('Curve with Normal and Binormal Vectors')
         plt.show()
 
-def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, full = True):
+    return mismatch
+
+def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
     """
     This function takes two 1D arrays (R0 and Z0), which contain
     the values of the radius R and vertical coordinate Z in cylindrical
@@ -370,11 +502,16 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, full = True):
         nfp: number of field periods of the axis
         ntor: resolution in toroidal Fourier space
         lasym: False if stellarator-symmetric, True if not
+        phi_in: phi grid onto which to evaluate
     """
-    nphi = len(R0)
-    if full:
-        phi_conversion = np.linspace(0, 2 * np.pi, nphi, endpoint=False)
+    # Create an evenly spaced cylindrical angle in which to sample the geometry of the acis
+    if isinstance(phi_in, list) or isinstance(phi_in, np.ndarray):
+        phi_conversion = np.array(phi_in)
+        nphi = len(phi_conversion)
+        assert len(R0) == nphi
+        assert len(Z0) == nphi
     else:
+        nphi = len(R0)
         phi_conversion = np.linspace(0, 2 * np.pi / nfp, nphi, endpoint=False)
 
     # Harmonic components of axis position
@@ -400,7 +537,7 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, full = True):
     zc[0] = np.sum(Z0) / nphi
 
     if not lasym:
-        rs = 0
-        zc = 0
+        rs = rs * 0.0
+        zc = zc * 0.0
 
     return rc, rs, zc, zs

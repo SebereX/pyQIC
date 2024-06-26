@@ -91,7 +91,7 @@ class Qic():
             if frenet:
                 # The input is considered to be in the unshifted grid always, but we need to change varphi so that we evaluate
                 # on the appropriate shifted grid later.
-                varphi = self.phi
+                varphi = np.linspace(0, 2 * np.pi / nfp, nphi, endpoint=False)
         else:
             # If QS set shift to 0
             self.phi_shift = 0
@@ -135,6 +135,7 @@ class Qic():
             self.L_in = L # Length of curve in period
             self.varphi = varphi
             self.helicity_in = helicity
+            self.flag_half = (np.mod(helicity, 1) == 0.5) # If half helicity, to take into account the flip of sign
             self.axis_complete = False
 
             self.Raxis = None

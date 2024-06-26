@@ -6,6 +6,7 @@ import logging
 import numpy as np
 from .util import mu0
 from .optimize_nae import min_geo_qi_consistency
+from .spectral_diff_matrix import spectral_diff_matrix_extended
 
 #logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -27,7 +28,6 @@ def calculate_r2(self):
     X1s = self.X1s
     Y1s = self.Y1s
     Y1c = self.Y1c
-    d_d_varphi = self.d_d_varphi
     iota_N = self.iotaN
     iota = self.iota
     curvature = self.curvature
@@ -40,6 +40,22 @@ def calculate_r2(self):
     p2 = self.p2
     sG = self.sG
     I2_over_Bbar = self.I2 / self.Bbar
+    d_d_varphi = self.d_d_varphi.copy()
+    # If half helicity axes are considered, we need to introduce a differentiation matrix in the extended domain
+    if np.mod(self.helicity, 1) == 0.5:
+        if self.diff_finite:
+            diff_order = self.diff_order
+            d_d_phi_copy = self.d_d_phi.copy()
+            d_d_phi_copy[:diff_order,-diff_order:] = -d_d_phi_copy[:diff_order,-diff_order:]
+            d_d_phi_copy[-diff_order:,:diff_order] = -d_d_phi_copy[-diff_order:,:diff_order]
+        else:
+            d_d_phi_copy = spectral_diff_matrix_extended(self.nphi)
+        d_d_varphi_ext = np.zeros((nphi, nphi))
+        for j in range(nphi):
+            d_d_varphi_ext[j,:] = d_d_phi_copy[j,:] * self.sG * G0 / (self.B0[j] * self.d_l_d_phi[j])
+        self.d_d_varphi_ext = d_d_varphi_ext
+    else:
+        d_d_varphi_ext = self.d_d_varphi.copy()
 
     ##############
     # COMPUTE G2 #
@@ -80,9 +96,10 @@ def calculate_r2(self):
 
     ## Construct differential matrices, (i) ##
     for j in range(nphi):
-        # Differential operation in φ
-        matrix_beta_1[j, 0:nphi] = d_d_varphi[j, :]  # Terms involving beta_1c
-        matrix_beta_1[j+nphi, nphi:(2*nphi)] = d_d_varphi[j, :]  # Temrs involving beta_1s
+        # Differential operation in φ : if the field is half-helicity, then β_1c and β_1s are half-periodic, 
+        # so need extended diff matrix
+        matrix_beta_1[j, 0:nphi] = d_d_varphi_ext[j, :]  # Terms involving beta_1c
+        matrix_beta_1[j+nphi, nphi:(2*nphi)] = d_d_varphi_ext[j, :]  # Terms involving beta_1s
 
         # Differential operation in χ: did is not differential in φ, but differential in χ crosses sin/cos
         matrix_beta_1[j, j + nphi] = matrix_beta_1[j, j + nphi] + iota_N  # Terms involving beta_1s
@@ -128,8 +145,6 @@ def calculate_r2(self):
         # If QS, the harmonic components of the magnetic field at second order is provided
         B2c = np.full(nphi, self.B2c_in)
         B2s = np.full(nphi, self.B2s_in)
-        # self.B2c_array=B2c
-        # self.B2s_array=B2s
     else:
         # If QI, the harmonic components of X at second order are provided
         X2c = self.evaluate_input_on_grid(self.X2c_in, self.varphi)
@@ -153,9 +168,6 @@ def calculate_r2(self):
                                       * ( B0 * B0 * (-qc * qc + qs * qs - rc * rc + rs * rs) \
                                         + G0 * G0 * curvature * (curvature * (-X1c * X1c + X1s * X1s) + 4 * X2c)
                                         - 4 * B0 * G0 * sG * (np.matmul(d_d_varphi, Z2c) + 2 * Z2s * iota_N)))
-        # self.B2c_array_alt = X2c * curvature * B0 - B0 * B0_over_abs_G0 * (np.matmul(d_d_varphi,Z2c) + 2*iota_N*Z2s - B0_over_abs_G0 * ( \
-        #     + 3 * G0 * G0 * (B1c*B1c-B1s*B1s)/(4*B0**4) - (X1c*X1c - X1s*X1s)/4*(curvature*abs_G0_over_B0)**2 \
-        #     - (qc * qc - qs * qs + rc * rc - rs * rs)/4))
 
     else:
         # If QS, then B2c & B2s are inputs, and need to use Eqs.(A35-36) in [Landreman, Sengupta (2019)] to solve for X2s & X2c
@@ -194,7 +206,9 @@ def calculate_r2(self):
 
     # The forms here omit the contributions from X20 and Y20 to the d/dφ terms for now. 
     # That is, a X2c' as in fXc, Eq.(A45) in [Landreman, Sengupta (2019)], is ignored, and
-    # will be handled later.
+    # will be handled later. 
+    # The derivatives on X2s/X2c, also Y2c/Y2s should be taken in the extended domain to deal 
+    # with half helicity cases (only the non Y20 and X20 parts here)
 
     # fX0
     fX0_from_X20 = -4 * G0_over_Bbar * (Y2c_from_X20 * Z2s - Y2s_from_X20 * Z2c)
@@ -209,7 +223,7 @@ def calculate_r2(self):
         - I2_over_Bbar * (- 2 * Y2s_from_X20) * abs_G0_over_B0 - beta_0 * abs_G0_over_B0 * (-2 * Y2c_from_X20)
     fXs_from_Y20 = -torsion * abs_G0_over_B0 * Y2s_from_Y20 - 4 * G0_over_Bbar * (-Z2c + Y2c_from_Y20 * Z20) \
         - I2_over_Bbar * (- 2 * Y2s_from_Y20) * abs_G0_over_B0 - beta_0 * abs_G0_over_B0 * (-2 * Y2c_from_Y20)
-    fXs_inhomogeneous = np.matmul(d_d_varphi,X2s) - 2 * iota_N * X2c - torsion * abs_G0_over_B0 * Y2s_inhomogeneous + curvature * abs_G0_over_B0 * Z2s \
+    fXs_inhomogeneous = np.matmul(d_d_varphi_ext, X2s) - 2 * iota_N * X2c - torsion * abs_G0_over_B0 * Y2s_inhomogeneous + curvature * abs_G0_over_B0 * Z2s \
         - 4 * G0_over_Bbar * (Y2c_inhomogeneous * Z20) \
         - I2_over_Bbar * (0.5 * curvature * (X1s * Y1c + X1c * Y1s) - 2 * Y2s_inhomogeneous) * abs_G0_over_B0 \
         - beta_0 * abs_G0_over_B0 * (-2 * Y2c_inhomogeneous + 0.5 * curvature * (X1c * Y1c - X1s * Y1s)) \
@@ -220,7 +234,7 @@ def calculate_r2(self):
         - I2_over_Bbar * (- 2 * Y2c_from_X20) * abs_G0_over_B0 - beta_0 * abs_G0_over_B0 * (2 * Y2s_from_X20)
     fXc_from_Y20 = -torsion * abs_G0_over_B0 * Y2c_from_Y20 - 4 * G0_over_Bbar * (Z2s - Y2s_from_Y20 * Z20) \
         - I2_over_Bbar * (- 2 * Y2c_from_Y20) * abs_G0_over_B0 - beta_0 * abs_G0_over_B0 * (2 * Y2s_from_Y20)
-    fXc_inhomogeneous = np.matmul(d_d_varphi,X2c) + 2 * iota_N * X2s - torsion * abs_G0_over_B0 * Y2c_inhomogeneous + curvature * abs_G0_over_B0 * Z2c \
+    fXc_inhomogeneous = np.matmul(d_d_varphi_ext,X2c) + 2 * iota_N * X2s - torsion * abs_G0_over_B0 * Y2c_inhomogeneous + curvature * abs_G0_over_B0 * Z2c \
         - 4 * G0_over_Bbar * (-Y2s_inhomogeneous * Z20) \
         - I2_over_Bbar * (0.5 * curvature * (X1c * Y1c - X1s * Y1s) - 2 * Y2c_inhomogeneous) * abs_G0_over_B0 \
         - beta_0 * abs_G0_over_B0 * (2 * Y2s_inhomogeneous - 0.5 * curvature * (X1c * Y1s + X1s * Y1c)) \
@@ -236,7 +250,7 @@ def calculate_r2(self):
     # fYs
     fYs_from_X20 = -2 * iota_N * Y2c_from_X20 - 4 * G0_over_Bbar * (Z2c)
     fYs_from_Y20 = -2 * iota_N * Y2c_from_Y20
-    fYs_inhomogeneous = np.matmul(d_d_varphi,Y2s_inhomogeneous) - 2 * iota_N * Y2c_inhomogeneous + torsion * abs_G0_over_B0 * X2s \
+    fYs_inhomogeneous = np.matmul(d_d_varphi_ext,Y2s_inhomogeneous) - 2 * iota_N * Y2c_inhomogeneous + torsion * abs_G0_over_B0 * X2s \
         - 4 * G0_over_Bbar * (-X2c * Z20) - I2_over_Bbar * (-curvature * X1s * X1c + 2 * X2s) * abs_G0_over_B0 \
         - beta_0 * abs_G0_over_B0 * (2 * X2c + 0.5 * curvature*  (X1s * X1s - X1c * X1c)) \
         - 0.5 * abs_G0_over_B0 * (beta_1c * X1c - beta_1s * X1s)
@@ -244,7 +258,7 @@ def calculate_r2(self):
     # fYc:
     fYc_from_X20 = 2 * iota_N * Y2s_from_X20 - 4 * G0_over_Bbar * (-Z2s)
     fYc_from_Y20 = 2 * iota_N * Y2s_from_Y20
-    fYc_inhomogeneous = np.matmul(d_d_varphi,Y2c_inhomogeneous) + 2 * iota_N * Y2s_inhomogeneous + torsion * abs_G0_over_B0 * X2c \
+    fYc_inhomogeneous = np.matmul(d_d_varphi_ext,Y2c_inhomogeneous) + 2 * iota_N * Y2s_inhomogeneous + torsion * abs_G0_over_B0 * X2c \
         - 4 * G0_over_Bbar * (X2s * Z20) - I2_over_Bbar * (0.5 * curvature * (X1s * X1s - X1c * X1c) + 2 * X2c) * abs_G0_over_B0 \
         - beta_0 * abs_G0_over_B0 * (-2 * X2s + curvature * X1s * X1c) \
         + 0.5 * abs_G0_over_B0 * (beta_1c * X1s + beta_1s * X1c)
@@ -258,13 +272,14 @@ def calculate_r2(self):
         # The system of equations involves two: Eqs.(A41-42) in [Landreman, Sengupta (2019)] which we call I and II respectively
         
         ## Equation I ##
-        # NOTE: important to note here that d_d_varphi to the right is actually including derivative of what is to be multiplied
-        # by the matrix to the right, but also the pieces sharing the second dimension of d_d_varphi
+        # NOTE: important to note here that d_d_varphi_ext to the right is actually including derivative of what is to be multiplied
+        # by the matrix to the right, but also the pieces sharing the second dimension of d_d_varphi_ext. Need to use extended domain
+        # to correctly deal with the half helicity cases
 
         # Include the dX20/dφ terms: contributions arise from -X1s * fX0 + Y1c * fYs - Y1s * fYc.
-        matrix[j, 0:nphi] = (-X1s[j] + Y1c[j] * Y2s_from_X20 - Y1s[j] * Y2c_from_X20) * d_d_varphi[j, :]
+        matrix[j, 0:nphi] = (-X1s[j] + Y1c[j] * Y2s_from_X20 - Y1s[j] * Y2c_from_X20) * d_d_varphi_ext[j, :]
         # Include the dY20/dφ terms: contributions arise from  -Y1s * fY0 + Y1c * fYs - Y1s * fYc
-        matrix[j, nphi:(2*nphi)] = (-Y1s[j] - Y1s[j] * Y2c_from_Y20 + Y1c[j] * Y2s_from_Y20) * d_d_varphi[j, :]
+        matrix[j, nphi:(2*nphi)] = (-Y1s[j] - Y1s[j] * Y2c_from_Y20 + Y1c[j] * Y2s_from_Y20) * d_d_varphi_ext[j, :]
         # Include the explicit X20 terms
         matrix[j, j] = matrix[j, j] - X1s[j] * fX0_from_X20[j] + X1c[j] * fXs_from_X20[j] - X1s[j] * fXc_from_X20[j] - \
                                       Y1s[j] * fY0_from_X20[j] + Y1c[j] * fYs_from_X20[j] - Y1s[j] * fYc_from_X20[j]
@@ -274,9 +289,9 @@ def calculate_r2(self):
 
         ## Equation II ##
         # Include the explict dX20/dφ terms: contributions arise from -X1c * fX0 + Y1s * fYs + Y1c * fYc
-        matrix[j+nphi, 0:nphi] = (-X1c[j] + Y1s[j] * Y2s_from_X20 + Y1c[j] * Y2c_from_X20) * d_d_varphi[j, :]
+        matrix[j+nphi, 0:nphi] = (-X1c[j] + Y1s[j] * Y2s_from_X20 + Y1c[j] * Y2c_from_X20) * d_d_varphi_ext[j, :]
         # Include the explicit dY20/dφ terms: contributions arise from -Y1c * fY0 + Y1s * fYs + Y1c * fYc
-        matrix[j+nphi, nphi:(2*nphi)] = (-Y1c[j] + Y1s[j] * Y2s_from_Y20 + Y1c[j] * Y2c_from_Y20) * d_d_varphi[j, :]
+        matrix[j+nphi, nphi:(2*nphi)] = (-Y1c[j] + Y1s[j] * Y2s_from_Y20 + Y1c[j] * Y2c_from_Y20) * d_d_varphi_ext[j, :]
         # Include the explicit X20 terms
         matrix[j + nphi, j] = matrix[j + nphi, j] - X1c[j] * fX0_from_X20[j] + X1s[j] * fXs_from_X20[j] + X1c[j] * fXc_from_X20[j] -\
                                                     Y1c[j] * fY0_from_X20[j] + Y1s[j] * fYs_from_X20[j] + Y1c[j] * fYc_from_X20[j]
@@ -350,13 +365,13 @@ def calculate_r2(self):
     self.V2 = V2
     self.V3 = V3
 
-    # Additional derived quantities
-    self.d_X20_d_varphi = np.matmul(d_d_varphi, X20)
-    self.d_X2s_d_varphi = np.matmul(d_d_varphi, X2s)
-    self.d_X2c_d_varphi = np.matmul(d_d_varphi, X2c)
-    self.d_Y20_d_varphi = np.matmul(d_d_varphi, Y20)
-    self.d_Y2s_d_varphi = np.matmul(d_d_varphi, Y2s)
-    self.d_Y2c_d_varphi = np.matmul(d_d_varphi, Y2c)
+    # Additional derived quantities (X2x and Y2x live in the extended domain, in order to handle half helicity)
+    self.d_X20_d_varphi = np.matmul(d_d_varphi_ext, X20)
+    self.d_X2s_d_varphi = np.matmul(d_d_varphi_ext, X2s)
+    self.d_X2c_d_varphi = np.matmul(d_d_varphi_ext, X2c)
+    self.d_Y20_d_varphi = np.matmul(d_d_varphi_ext, Y20)
+    self.d_Y2s_d_varphi = np.matmul(d_d_varphi_ext, Y2s)
+    self.d_Y2c_d_varphi = np.matmul(d_d_varphi_ext, Y2c)
     self.d_Z20_d_varphi = np.matmul(d_d_varphi, Z20)
     self.d_Z2s_d_varphi = np.matmul(d_d_varphi, Z2s)
     self.d_Z2c_d_varphi = np.matmul(d_d_varphi, Z2c)
