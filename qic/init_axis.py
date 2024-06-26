@@ -7,7 +7,7 @@ import logging
 import numpy as np
 from scipy.interpolate import CubicSpline as spline
 from scipy.interpolate import BSpline, make_interp_spline, PchipInterpolator
-from .spectral_diff_matrix import spectral_diff_matrix, finite_difference_matrix
+from .spectral_diff_matrix import spectral_diff_matrix, finite_difference_matrix, construct_periodic_diff_matrix
 from .util import fourier_minimum
 from .input_structure import evaluate_input_on_grid
 from .fourier_interpolation import fourier_interpolation_matrix, make_interp_fourier
@@ -32,6 +32,32 @@ def convert_to_spline(self,array, half_period = False):
             sp=spline(np.append(self.phi,2*np.pi/self.nfp+self.phi[0]), np.append(array,array[0]), bc_type='periodic')
     return sp
 
+def self_consistent_ell_to_varphi_given_varphi(self, varphi, d_l_d_phi):
+    # Picard iteration is used to find varphi and G0
+    nphi = len(varphi)
+    # Initialise nu = varphi - phi, which must be periodic
+    nu = np.zeros((nphi,))
+    num_iter_max = 20   # Max number of iterations
+    for j in range(num_iter_max):
+        # Nu from previous iteration for reference
+        last_nu = nu
+        # Update varphi
+        varphi = self.phi + nu
+        # In here B0_in is assumed to be provided in varphi
+        B0 = self.evaluate_input_on_grid(self.B0_in, varphi) 
+        # Construct G0 (everything is in the equally spaced phi grid)
+        abs_G0 = np.sum(B0 * d_l_d_phi) / self.nphi
+        # Update nu by inverting d varphi / d phi - 1 = d nu / d phi and 
+        # d l/d phi = (abs_G0/B0) d varphi/d phi
+        rhs = -1 + d_l_d_phi * B0 / abs_G0
+        nu = np.linalg.solve(self.d_d_phi+self.interpolateTo0, rhs) # Include interpolateTo0 to make matrix invertible, nu = 0 at origin
+        # Relative error in nu
+        norm_change = np.sqrt(sum((nu-last_nu)**2)/self.nphi)
+        logger.debug("  Iteration {}: |change to nu| = {}".format(j, norm_change))
+        # Exit iteration if nu converged
+        if norm_change < 1e-17:
+            break
+
 def init_axis(self, omn_complete = True):
     """
     Initialize the curvature, torsion, differentiation matrix, etc.
@@ -51,20 +77,8 @@ def init_axis(self, omn_complete = True):
         
 
         # Derivative and interpolation
-        if self.diff_finite:
-            if self.diff_finite == 2:
-                self.d_d_phi = finite_difference_matrix(self.nphi, order = 2) * self.nfp
-                self.diff_order = 2
-            elif self.diff_finite == 6:
-                self.d_d_phi = finite_difference_matrix(self.nphi, order = 6) * self.nfp
-                self.diff_order = 2
-            else:
-                self.d_d_phi = finite_difference_matrix(self.nphi, order = 4) * self.nfp
-                self.diff_order = 4
-        else:
-            self.d_d_phi = spectral_diff_matrix(self.nphi, xmin = 0, xmax = 2*np.pi/self.nfp)
-            self.diff_order = None
-
+        self.diff_order, self.d_d_phi = construct_periodic_diff_matrix(self.diff_finite, self.nphi, self.nfp)
+        
         # It is also convenient to define interpolation to phi = 0. The grid is not shifted. 
         # self.interpolateTo0 = fourier_interpolation_matrix(self.nphi, 0)
         self.interpolateTo0 = fourier_interpolation_matrix(self.nphi, -self.phi_shift*self.d_phi*self.nfp)

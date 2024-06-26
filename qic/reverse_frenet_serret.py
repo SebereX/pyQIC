@@ -11,6 +11,8 @@ from scipy.interpolate import PchipInterpolator
 from sklearn.decomposition import PCA
 from scipy.spatial.transform import Rotation as R
 from qic.fourier_interpolation import fourier_interpolation
+from qic.spectral_diff_matrix import construct_periodic_diff_matrix
+
 
 logger = logging.getLogger(__name__)
 
@@ -315,10 +317,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
         kappa = kappa(ell)
         tau = tau(ell)
         
-    curvature_func = make_spline(phi, kappa)
-    torsion_func = make_spline(phi, tau)
-    ell_func = make_spline(phi, ell, periodic = False)
-    # varphi_func = make_spline(phi, varphi, periodic = False)
+    nu_func = make_spline(varphi, varphi - phi, periodic = True)
 
     # Check if the phi grid has the right bounds
     # print("Phi end: ", phi[-1] - 2*np.pi)

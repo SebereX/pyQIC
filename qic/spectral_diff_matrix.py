@@ -103,3 +103,20 @@ def finite_difference_matrix(N, order=2):
         raise ValueError("Unsupported order. Choose 2, 4, or 6.")
     
     return D
+
+def construct_periodic_diff_matrix(diff_finite, nphi, nfp):
+    if diff_finite:
+        if diff_finite == 2:
+            d_d_phi = finite_difference_matrix(nphi, order = 2) * nfp
+            diff_order = 2
+        elif diff_finite == 6:
+            d_d_phi = finite_difference_matrix(nphi, order = 6) * nfp
+            diff_order = 2
+        else:
+            d_d_phi = finite_difference_matrix(nphi, order = 4) * nfp
+            diff_order = 4
+    else:
+        d_d_phi = spectral_diff_matrix(nphi, xmin = 0, xmax = 2*np.pi/nfp)
+        diff_order = None
+        
+    return diff_order, d_d_phi 
