@@ -160,15 +160,7 @@ def init_axis(self, omn_complete = True):
         # CONSTRUCT R/Z & DERIVATIVES #
         ###############################
         # This will require taking derivatives. Define differentiation on the regular phi grid
-        if self.diff_finite:
-            if self.diff_finite == 2:
-                self.d_d_phi = finite_difference_matrix(self.nphi, order = 2) * self.nfp
-            elif self.diff_finite == 6:
-                self.d_d_phi = finite_difference_matrix(self.nphi, order = 6) * self.nfp
-            else:
-                self.d_d_phi = finite_difference_matrix(self.nphi, order = 4) * self.nfp
-        else:
-            self.d_d_phi = spectral_diff_matrix(self.nphi, xmin = 0, xmax = 2*np.pi/self.nfp)
+        self.diff_order, self.d_d_phi = construct_periodic_diff_matrix(self.diff_finite, self.nphi, self.nfp)
 
         # It is also convenient to define interpolation to phi = 0, taking any shift into account
         self.interpolateTo0 = fourier_interpolation_matrix(self.nphi, -self.phi_shift*self.d_phi*self.nfp)

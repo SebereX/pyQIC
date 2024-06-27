@@ -6,13 +6,13 @@ with open("README.md", "r") as fh:
 setuptools.setup(
     name="qicna",
     version="0.1",
-    author="Rogerio Jorge and Matt Landreman",
-    author_email="rogerio.jorge@tecnico.ulisboa.pt",
+    author="Eduardo Rodriguez, Rogerio Jorge and Matt Landreman",
+    author_email="eduardo.rodriguez@ipp.mpg.de",
     description="Quasi-isodynamic Stellarator Construction",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=setuptools.find_packages(),
-    url="https://github.com/rogeriojorge/pyQIC",
+    url="https://github.com/SebereX/pyQIC",
     #install_requires=['numpy', 'scipy'],
     classifiers=[
         "Programming Language :: Python :: 3",
