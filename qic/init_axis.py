@@ -17,19 +17,21 @@ from .reverse_frenet_serret import invert_frenet_axis, to_Fourier_axis
 logger = logging.getLogger(__name__)
 
 # Define periodic spline interpolant conversion used in several scripts and plotting
-def convert_to_spline(self,array, half_period = False):
+def convert_to_spline(self,array, half_period = False, varphi = False):
     # def sp(x):
     #     fun = make_interp_fourier(array)
     #     return fun(x, self.phi[0], self.nfp)
+    domain = self.varphi if varphi else self.phi
+
     if isinstance(array, float):
-        sp=spline(np.append(self.phi,2*np.pi/self.nfp+self.phi[0]), np.ones(self.nphi + 1)*array, bc_type='periodic')
+        sp=spline(np.append(domain,2*np.pi/self.nfp+domain[0]), np.ones(self.nphi + 1)*array, bc_type='periodic')
     else:
         if half_period:
-            phi_ext = np.concatenate(tuple(self.phi + 2*np.pi/self.nfp*j for j in range(self.nfp)))
+            phi_ext = np.concatenate(tuple(domain + 2*np.pi/self.nfp*j for j in range(self.nfp)))
             temp = np.concatenate(tuple(array*(-1)**j for j in range(self.nfp)))
             sp = PchipInterpolator(phi_ext, temp, axis=0, extrapolate='periodic')
         else:
-            sp=spline(np.append(self.phi,2*np.pi/self.nfp+self.phi[0]), np.append(array,array[0]), bc_type='periodic')
+            sp=spline(np.append(domain,2*np.pi/self.nfp+domain[0]), np.append(array,array[0]), bc_type='periodic')
     return sp
 
 def self_consistent_ell_from_varphi(self):
@@ -110,11 +112,11 @@ def init_axis(self, omn_complete = True):
 
         # Final value for B0
         Bbar = 1 # self.spsi * np.mean(self.B0)
-        self.B0_spline = self.convert_to_spline(B0)
+        self.B0_spline = self.convert_to_spline(B0) # splines are in phi
 
         # Final value for G0
         G0 = self.sG*abs_G0
-        abs_G0_over_B0 = np.abs(G0/Bbar)
+        abs_G0_over_B0 = np.abs(G0/B0)
 
         ## Evaluation of d ##
         if not self.omn:
@@ -403,7 +405,7 @@ def init_axis(self, omn_complete = True):
         ###############################################
         if self.omn == False:
             # Compute G0 for QS field: in here B0 is a scalar (this was done in __init__)
-            G0 = self.sG * np.sum(self.B0 * d_l_d_phi) / nphi
+            G0 = self.sG * np.trapz(self.B0 * d_l_d_phi, self.phi) / (2*np.pi/self.nfp)
             abs_G0_over_B0 = self.sG*G0/self.B0
 
             # Reference Bbar definition
@@ -447,7 +449,7 @@ def init_axis(self, omn_complete = True):
                 # In here B0_in is assumed to be provided in varphi
                 B0 = self.evaluate_input_on_grid(self.B0_in, varphi) 
                 # Construct G0 (everything is in the equally spaced phi grid)
-                abs_G0 = np.sum(B0 * d_l_d_phi) / nphi
+                abs_G0 = np.trapz(B0 * d_l_d_phi, phi) / (2*np.pi/self.nfp)
                 # Update nu by inverting d varphi / d phi - 1 = d nu / d phi and 
                 # d l/d phi = (abs_G0/B0) d varphi/d phi
                 rhs = -1 + d_l_d_phi * B0 / abs_G0
@@ -468,7 +470,7 @@ def init_axis(self, omn_complete = True):
             self.Bbar = self.spsi * np.mean(self.B0)
 
             # Final value for G0
-            G0 = self.sG * np.sum(self.B0 * d_l_d_phi) / nphi
+            G0 = self.sG * np.trapz(self.B0 * d_l_d_phi, phi) / (2*np.pi/self.nfp)
             abs_G0_over_B0 = np.abs(G0/self.Bbar)
 
             # Length along the axis

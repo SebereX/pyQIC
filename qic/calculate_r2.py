@@ -61,8 +61,8 @@ def calculate_r2(self):
     # The expression can be found in Eq.(A50) in [Landreman, Sengupta (2019)]
     # Part I: ∫dφ/B0**2/(2π/N) with the integral being over varphi in a period. Could do a sum in the 
     # regular phi grid using dφ = (dφ/dφ_c) dφ_c = dφ_c (dl/dφ_c)/(dl/dφ) 
-    # average_one_over_B0_squared_over_varphi = np.trapz(1 / (B0 * B0), self.varphi) / (2*np.pi/self.nfp)
-    average_one_over_B0_squared_over_varphi = np.sum(1 / (B0 * B0)) / nphi
+    average_one_over_B0_squared_over_varphi = np.trapz(1 / (B0 * B0), self.varphi) / (2*np.pi/self.nfp)
+    # average_one_over_B0_squared_over_varphi = np.sum(1 / (B0 * B0)) / nphi
 
     # Put all pieces together, Eq.(A50) in [Landreman, Sengupta (2019)] 
     G2 = -mu0 * p2 * G0 * average_one_over_B0_squared_over_varphi - iota * I2
@@ -320,11 +320,11 @@ def calculate_r2(self):
     
     ## Compute associated features of B20 ##
     # Average B20 in varphi
-    normalizer = 1 / np.sum(self.d_l_d_phi)
-    self.B20_mean = np.sum(B20 * self.d_l_d_phi) * normalizer
+    normalizer = 1 / np.trapz(self.d_l_d_phi, self.phi)
+    self.B20_mean = np.trapz(B20 * self.d_l_d_phi, self.phi) * normalizer
     # Variation in B20
     self.B20_anomaly = B20 - self.B20_mean
-    self.B20_residual = np.sqrt(np.sum((B20 - self.B20_mean) * (B20 - self.B20_mean) * self.d_l_d_phi) * normalizer) / B0
+    self.B20_residual = np.sqrt(np.trapz((B20 - self.B20_mean) * (B20 - self.B20_mean) * self.d_l_d_phi, self.phi) * normalizer) / B0
     self.B20_variation = np.max(B20) - np.min(B20)
     
     #####################
@@ -524,8 +524,6 @@ def construct_qi_r2(self, order = 1, verbose = 0, params = [], method = "BFGS", 
         #           d_over_curvature_spline=self.d_over_curvature_spline, B2c_svals=X2c, B2s_cvals=X2s)
 
     return self.B2cQI_deviation_max
-
-
 
 
 def evaluate_X2c_X2s_QI(self, X2s_in = 0):

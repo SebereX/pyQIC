@@ -292,6 +292,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     
     # Periodic spline interpolation for kappa and tau (assume varphi is equally spaced)
     flag_half = self.flag_half
+
     # Keep the geometric quantities in cylindrical phi
     self.R0_func = make_spline(phi, R)
     self.Z0_func = make_spline(phi, Z)
@@ -353,7 +354,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     self.nu = nu_func(varphi_in)
     phi_out = varphi_in - self.nu
     self.phi = phi_out
-    self.nu_spline = nu_func
+    self.nu_spline = make_spline(phi, varphi - phi, periodic = True)
 
     # Evaluate geometry
     self.R0 = self.R0_func(phi_out)
@@ -465,7 +466,7 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
         nfp: number of field periods of the axis
         ntor: resolution in toroidal Fourier space
         lasym: False if stellarator-symmetric, True if not
-        phi_in: phi grid onto which to evaluate
+        phi_in: phi grid in [0, 2pi/N) onto which to evaluate
     """
     # Create an evenly spaced cylindrical angle if no phi provided:
     # the sampling is otherwise in whatever is provided, and use trapz to integrate over
@@ -499,8 +500,8 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
         zc[n] = np.trapz(Z0 * cosangle * factor2, phi_conversion)
         zs[n] = np.trapz(Z0 * sinangle * factor2, phi_conversion)
 
-    rc[0] = np.trapz(R0, phi_conversion) / phi_conversion[-1]
-    zc[0] = np.trapz(Z0, phi_conversion) / phi_conversion[-1]
+    rc[0] = np.trapz(R0, phi_conversion) / (2 * np.pi / nfp)
+    zc[0] = np.trapz(Z0, phi_conversion) / (2 * np.pi / nfp)
 
     if not lasym:
         rs = rs * 0.0

@@ -417,7 +417,7 @@ def r1_diagnostics(self):
     # CONSTRUCT B1 #
     ################
     if self.omn:
-        # Make spline for d
+        # Make spline for d (in phi)
         self.d_spline = self.convert_to_spline(self.d)
         # self.alpha_tilde = self.alpha # -self.N_helicity*self.varphi
 
@@ -520,7 +520,7 @@ def r1_diagnostics(self):
     p = self.X1s * self.X1s + self.X1c * self.X1c + self.Y1s * self.Y1s + self.Y1c * self.Y1c
     q = self.X1s * self.Y1c - self.X1c * self.Y1s
     self.elongation = (p + np.sqrt(p * p - 4 * q * q)) / (2 * np.abs(q))
-    self.mean_elongation = np.sum(self.elongation * self.d_l_d_phi) / np.sum(self.d_l_d_phi)
+    self.mean_elongation = np.trapz(self.elongation * self.d_l_d_varphi, self.varphi) / np.trapz(self.d_l_d_varphi, self.varphi)
     # index = np.argmax(self.elongation)
     self.max_elongation = -fourier_minimum(-self.elongation)
 
