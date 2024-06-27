@@ -126,7 +126,7 @@ def align_with_min_z_excursion(position):
     
     return transformed_position, centroid, rotation_matrix
 
-def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_cyl = None, full_axis = True, flip = True, minimal = False, func = False):
+def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full_axis = True, flip = True, minimal = False, func = False):
     ## Complete the curve ##
     # The inputs are assumed to be in the [0,2pi/N) grid. We extend them in field period and to include the last point
 
@@ -258,15 +258,9 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
     aligned_N = change_vector_to_cylindrical(phi, aligned_N)
     aligned_B = change_vector_to_cylindrical(phi, aligned_B)
 
-    # Redefine the cylindrical angle so that the first point is phi = 0 (the cylindrical representation should not change)
-    # import matplotlib.pyplot as plt
-    # plt.plot(phi)
-    # plt.plot(np.unwrap(phi))
+    # Redefine the cylindrical angle so that the first point is phi = 0 (the cylindrical representation should not change
     phi = np.unwrap(phi)
     phi = (phi-phi[0])/phi[-1]*2*np.pi
-    # phi = (phi - phi[0]) % (2*np.pi)
-    # plt.plot(phi-varphi)
-    # plt.show()
 
     ################
     # SPLINES OF r #
@@ -296,20 +290,9 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
             sp = PchipInterpolator(wrapped_grid, array)
         return sp
     
-    # def make_sym_spline(grid, array, half = False, even = True):
-    #     sgn_half = -1 if flag_half else 1
-
-    #     sp_temp = make_spline(grid, array)
-    #     phi_centred = np.linspace(0, 2*np.pi/self.nfp, self.nphi)
-    #     smoothed_data = smooth_fourier(np.concatenate((sp_temp(phi_centred),sgn_half*sp_temp(phi_centred))), \
-    #                                     self.nfp, n_harm = 20, phi_out = grid/2, even = even)
-        
-    #     sp = make_spline(grid, smoothed_data, True, half)
-    #     return sp
-
-    # Periodic spline interpolation for kappa and tau
+    # Periodic spline interpolation for kappa and tau (assume varphi is equally spaced)
     flag_half = self.flag_half
-
+    # Keep the geometric quantities in cylindrical phi
     self.R0_func = make_spline(phi, R)
     self.Z0_func = make_spline(phi, Z)
 
@@ -343,7 +326,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
     # varphi = varphi_iter
 
     # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
-    # a whole 2pi turn, and will be discontinuous at phi = 0
+    # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in vylindrical phi.
     self.normal_R_spline = make_spline(phi, aligned_N[:,0], half = flag_half)
     self.normal_phi_spline = make_spline(phi, aligned_N[:,1], half = flag_half)
     self.normal_z_spline = make_spline(phi, aligned_N[:,2], half = flag_half)
@@ -365,54 +348,35 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
     ##############################
     # EVALUATE ON A REGULAR GRID #
     ##############################
-    # Create an evenly spaced cylindrical angle in which to sample the geometry of the acis
-    if isinstance(phi_cyl, list) or isinstance(phi_cyl, np.ndarray):
-        phi_new = np.array(phi_cyl)
-        nphi = len(phi_cyl)
-    elif hasattr(self, "phi"):
-        phi_new = self.phi
-        nphi = self.nphi
-    else:
-        nphi = self.nphi
-        phi_new = np.linspace(0, 2*np.pi/self.nfp, nphi) # Note here I choose the period
-
-    # # The alternative would be to use, but leave it for now because not sure what the best final form of approach is
-    # phi_new = phi
-    # nphi = len(phi)
+    # Do nothing to the curvature and torsion: these are assumed to be given in varphi grid
+    # Evaluate phi
+    self.nu = nu_func(varphi_in)
+    phi_out = varphi_in - self.nu
+    self.phi = phi_out
+    self.nu_spline = nu_func
 
     # Evaluate geometry
-    self.R0 = self.R0_func(phi_new)
-    self.Z0 = self.Z0_func(phi_new)
+    self.R0 = self.R0_func(phi_out)
+    self.Z0 = self.Z0_func(phi_out)
 
+    nphi = self.nphi
     self.normal_cylindrical = np.zeros((nphi, 3))
-    self.normal_cylindrical[:,0] = self.normal_R_spline(phi_new)
-    self.normal_cylindrical[:,1] = self.normal_phi_spline(phi_new)
-    self.normal_cylindrical[:,2] = self.normal_z_spline(phi_new)
+    self.normal_cylindrical[:,0] = self.normal_R_spline(phi_out)
+    self.normal_cylindrical[:,1] = self.normal_phi_spline(phi_out)
+    self.normal_cylindrical[:,2] = self.normal_z_spline(phi_out)
 
     self.binormal_cylindrical = np.zeros((nphi, 3))
-    self.binormal_cylindrical[:,0] = self.binormal_R_spline(phi_new)
-    self.binormal_cylindrical[:,1] = self.binormal_phi_spline(phi_new)
-    self.binormal_cylindrical[:,2] = self.binormal_z_spline(phi_new)
+    self.binormal_cylindrical[:,0] = self.binormal_R_spline(phi_out)
+    self.binormal_cylindrical[:,1] = self.binormal_phi_spline(phi_out)
+    self.binormal_cylindrical[:,2] = self.binormal_z_spline(phi_out)
 
     self.tangent_cylindrical = np.zeros((nphi, 3))
-    self.tangent_cylindrical[:,0] = self.tangent_R_spline(phi_new)
-    self.tangent_cylindrical[:,1] = self.tangent_phi_spline(phi_new)
-    self.tangent_cylindrical[:,2] = self.tangent_z_spline(phi_new)
+    self.tangent_cylindrical[:,0] = self.tangent_R_spline(phi_out)
+    self.tangent_cylindrical[:,1] = self.tangent_phi_spline(phi_out)
+    self.tangent_cylindrical[:,2] = self.tangent_z_spline(phi_out)
 
-    # Resample the curvature and torsion: this gives potential issues with interpolation etc.
-    # self.phi = phi # if we insist on a regular varphi grid
-    self.curvature = curvature_func(phi_new)
-    # self.curvature = smooth_fourier(np.concatenate((self.curvature,sgn_half*self.curvature)), self.nfp, n_harm = 20, phi_out = phi_new/2, \
-    #                                even = flag_half)
-    
-    self.torsion = torsion_func(phi_new)
-    # self.torsion = smooth_fourier(self.torsion, self.nfp, n_harm = 20, phi_out = phi_new, even = True)
-
-    self.ell = ell_func(phi_new) # /ell_func(2*np.pi/self.nfp)*self.L_in
-    phi_centred = np.linspace(0, 2*np.pi/self.nfp, self.nphi)
-    self.ell = phi_new / (2*np.pi/self.nfp) * self.L_in + \
-                smooth_fourier(ell_func(phi_centred) - phi_centred / (2*np.pi/self.nfp) * self.L_in, \
-                                self.nfp, n_harm = 30, phi_out = phi_new, even = False)
+    # self.nu_spline_of_phi = make_spline(np.append(self.varphi,self.varphi[0]+2*np.pi/self.nfp), \
+    #                                       np.append(self.varphi-self.phi,self.varphi[0]-self.phi[0]), bc_type='periodic')
 
     # self.varphi = varphi_func(phi_new) # /varphi_func(2*np.pi/self.nfp)*2*np.pi/self.nfp
     # self.varphi = phi_new + smooth_fourier(varphi_func(phi_centred) - phi_centred, \
@@ -427,7 +391,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
         ax = fig.add_subplot(111, projection='3d')
 
         # Plotting normal and binormal vectors as arrows
-        origin = [self.R0 * np.cos(phi_new), self.R0 * np.sin(phi_new), self.Z0]
+        origin = [self.R0 * np.cos(self.phi), self.R0 * np.sin(self.phi), self.Z0]
 
         # print(Theta)
         # Plot curve in cylindrical coordinates
@@ -438,7 +402,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, phi_
         num = int(nphi/stp)
 
         for i in range(num):
-            phi_i = phi_new[i*stp]
+            phi_i = self.phi[i*stp]
             ax.quiver(origin[0][i*stp], origin[1][i*stp], origin[2][i*stp], 
                     self.normal_cylindrical[i*stp,0]*np.cos(phi_i) - self.normal_cylindrical[i*stp,1]*np.sin(phi_i), \
                     self.normal_cylindrical[i*stp,0]*np.sin(phi_i) + self.normal_cylindrical[i*stp,1]*np.cos(phi_i), \
@@ -503,10 +467,13 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
         lasym: False if stellarator-symmetric, True if not
         phi_in: phi grid onto which to evaluate
     """
-    # Create an evenly spaced cylindrical angle in which to sample the geometry of the acis
+    # Create an evenly spaced cylindrical angle if no phi provided:
+    # the sampling is otherwise in whatever is provided, and use trapz to integrate over
+    # a potentially not uniform grid
     if isinstance(phi_in, list) or isinstance(phi_in, np.ndarray):
         phi_conversion = np.array(phi_in)
         nphi = len(phi_conversion)
+        print(len(R0), print(nphi))
         assert len(R0) == nphi
         assert len(Z0) == nphi
     else:
@@ -518,7 +485,7 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
     rs = np.zeros(int(ntor + 1))
     zc = np.zeros(int(ntor + 1))
     zs = np.zeros(int(ntor + 1))
-    factor = 2 / nphi
+    factor = 2 / phi_conversion[-1]
 
     for n in range(1, ntor+1):
         angle = - n * nfp * phi_conversion
@@ -527,13 +494,13 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
         factor2 = factor
         # The next 2 lines ensure inverse Fourier transform(Fourier transform) = identity
         # if n == 0: factor2 = factor2 / 2
-        rc[n] = np.sum(R0 * cosangle * factor2)
-        rs[n] = np.sum(R0 * sinangle * factor2)
-        zc[n] = np.sum(Z0 * cosangle * factor2)
-        zs[n] = np.sum(Z0 * sinangle * factor2)
+        rc[n] = np.trapz(R0 * cosangle * factor2, phi_conversion)
+        rs[n] = np.trapz(R0 * sinangle * factor2, phi_conversion)
+        zc[n] = np.trapz(Z0 * cosangle * factor2, phi_conversion)
+        zs[n] = np.trapz(Z0 * sinangle * factor2, phi_conversion)
 
-    rc[0] = np.sum(R0) / nphi
-    zc[0] = np.sum(Z0) / nphi
+    rc[0] = np.trapz(R0, phi_conversion) / phi_conversion[-1]
+    zc[0] = np.trapz(Z0, phi_conversion) / phi_conversion[-1]
 
     if not lasym:
         rs = rs * 0.0

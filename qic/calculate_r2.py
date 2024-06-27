@@ -45,15 +45,13 @@ def calculate_r2(self):
     if np.mod(self.helicity, 1) == 0.5:
         if self.diff_finite:
             diff_order = self.diff_order
-            d_d_phi_copy = self.d_d_phi.copy()
-            d_d_phi_copy[:diff_order,-diff_order:] = -d_d_phi_copy[:diff_order,-diff_order:]
-            d_d_phi_copy[-diff_order:,:diff_order] = -d_d_phi_copy[-diff_order:,:diff_order]
+            d_d_varphi_copy = self.d_d_varphi.copy()
+            d_d_varphi_copy[:diff_order,-diff_order:] = -d_d_varphi_copy[:diff_order,-diff_order:]
+            d_d_varphi_copy[-diff_order:,:diff_order] = -d_d_varphi_copy[-diff_order:,:diff_order]
         else:
-            d_d_phi_copy = spectral_diff_matrix_extended(self.nphi)
-        d_d_varphi_ext = np.zeros((nphi, nphi))
-        for j in range(nphi):
-            d_d_varphi_ext[j,:] = d_d_phi_copy[j,:] * self.sG * G0 / (self.B0[j] * self.d_l_d_phi[j])
-        self.d_d_varphi_ext = d_d_varphi_ext
+            d_d_varphi_copy = spectral_diff_matrix_extended(self.nphi)
+        d_d_varphi_ext = d_d_varphi_copy
+        self.d_d_varphi_ext = d_d_varphi_copy
     else:
         d_d_varphi_ext = self.d_d_varphi.copy()
 
@@ -64,7 +62,7 @@ def calculate_r2(self):
     # Part I: ∫dφ/B0**2/(2π/N) with the integral being over varphi in a period. Could do a sum in the 
     # regular phi grid using dφ = (dφ/dφ_c) dφ_c = dφ_c (dl/dφ_c)/(dl/dφ) 
     # average_one_over_B0_squared_over_varphi = np.trapz(1 / (B0 * B0), self.varphi) / (2*np.pi/self.nfp)
-    average_one_over_B0_squared_over_varphi = np.sum(self.d_l_d_phi / self.d_l_d_varphi / (B0 * B0)) / nphi
+    average_one_over_B0_squared_over_varphi = np.sum(1 / (B0 * B0)) / nphi
 
     # Put all pieces together, Eq.(A50) in [Landreman, Sengupta (2019)] 
     G2 = -mu0 * p2 * G0 * average_one_over_B0_squared_over_varphi - iota * I2

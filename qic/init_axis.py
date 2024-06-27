@@ -32,31 +32,24 @@ def convert_to_spline(self,array, half_period = False):
             sp=spline(np.append(self.phi,2*np.pi/self.nfp+self.phi[0]), np.append(array,array[0]), bc_type='periodic')
     return sp
 
-def self_consistent_ell_to_varphi_given_varphi(self, varphi, d_l_d_phi):
+def self_consistent_ell_from_varphi(self):
     # Picard iteration is used to find varphi and G0
-    nphi = len(varphi)
-    # Initialise nu = varphi - phi, which must be periodic
-    nu = np.zeros((nphi,))
-    num_iter_max = 20   # Max number of iterations
-    for j in range(num_iter_max):
-        # Nu from previous iteration for reference
-        last_nu = nu
-        # Update varphi
-        varphi = self.phi + nu
-        # In here B0_in is assumed to be provided in varphi
-        B0 = self.evaluate_input_on_grid(self.B0_in, varphi) 
-        # Construct G0 (everything is in the equally spaced phi grid)
-        abs_G0 = np.sum(B0 * d_l_d_phi) / self.nphi
-        # Update nu by inverting d varphi / d phi - 1 = d nu / d phi and 
-        # d l/d phi = (abs_G0/B0) d varphi/d phi
-        rhs = -1 + d_l_d_phi * B0 / abs_G0
-        nu = np.linalg.solve(self.d_d_phi+self.interpolateTo0, rhs) # Include interpolateTo0 to make matrix invertible, nu = 0 at origin
-        # Relative error in nu
-        norm_change = np.sqrt(sum((nu-last_nu)**2)/self.nphi)
-        logger.debug("  Iteration {}: |change to nu| = {}".format(j, norm_change))
-        # Exit iteration if nu converged
-        if norm_change < 1e-17:
-            break
+    nphi = self.nphi
+
+    # Evaliuate B0 on grid
+    B0 = self.evaluate_input_on_grid(self.B0_in, self.varphi) 
+
+    # Compute |G0|
+    abs_G0 =  self.L_in / (2*np.pi/self.nfp) * self.nphi/np.sum(1/B0)
+
+    # Separate l into l = ltilde + L_in varphi/ (2pi/N), which must be periodic
+    rhs = abs_G0/B0 - self.L_in / (2*np.pi/self.nfp)
+    ltilde = np.linalg.solve(self.d_d_varphi+self.interpolateTo0, rhs) # Include interpolateTo0 to make matrix invertible, nu = 0 at origin
+
+    # Construct ell
+    ell = ltilde + self.varphi * self.L_in / (2*np.pi/self.nfp)
+
+    return B0, ell, abs_G0
 
 def init_axis(self, omn_complete = True):
     """
@@ -68,33 +61,31 @@ def init_axis(self, omn_complete = True):
         varphi = self.varphi
         self.curvature = self.evaluate_input_on_grid(self.curvature_in, varphi, periodic = False)
         self.torsion = self.evaluate_input_on_grid(self.torsion_in, varphi)
-        self.ell = self.evaluate_input_on_grid(self.ell_in, varphi, periodic = False)
+        # self.ell = self.evaluate_input_on_grid(self.ell_in, varphi, periodic = False)
         self.axis_length = self.nfp * self.L_in
 
         # Axis symmetry (not really correct - evaluate_input_on_grid for grid input returns the array w/o change)
         self.lasym_axis = np.max(np.abs(np.abs(self.curvature) - np.abs(self.evaluate_input_on_grid(self.curvature_in, -varphi))))/np.abs(self.curvature).std() or \
                           np.max(np.abs(np.abs(self.torsion) - np.abs(self.evaluate_input_on_grid(self.torsion_in, -varphi))))/np.abs(self.torsion).std()
         
-
         # Derivative and interpolation
-        self.diff_order, self.d_d_phi = construct_periodic_diff_matrix(self.diff_finite, self.nphi, self.nfp)
+        self.diff_order, self.d_d_varphi = construct_periodic_diff_matrix(self.diff_finite, self.nphi, self.nfp)
         
-        # It is also convenient to define interpolation to phi = 0. The grid is not shifted. 
+        # It is also convenient to define interpolation to phi = 0. The grid is not shifted, could simply evaluate at 0
         # self.interpolateTo0 = fourier_interpolation_matrix(self.nphi, 0)
-        self.interpolateTo0 = fourier_interpolation_matrix(self.nphi, -self.phi_shift*self.d_phi*self.nfp)
+        self.interpolateTo0 = fourier_interpolation_matrix(self.nphi, 0)
+
+        # Construct the self consistent ell, |G0| and B0
+        B0, ell, abs_G0 = self_consistent_ell_from_varphi(self)
+        self.ell = ell
         
         # Evaluate the axis in cylindrical coordinates (note that it assumes the curve closes; could have
         # some discontinuity, might need an additional optimisation to close the curve)
-        # It modifies varphi, curvature, torsion, ell and the Frenet geometry accordingly, using phi
-        # as the cylindrical coordinate
-        # varphi_old = self.varphi.copy()
-
+        # It modifies phi, nu and the Frenet geometry accordingly, using varphi as regular grid
         flag_func = True if ("function_ell" in self.curvature_in) else False
         _ = invert_frenet_axis(self, self.curvature, self.torsion, self.ell, self.varphi, full_axis = True, func = flag_func)
-
-        # varphi = self.varphi
         
-        # Obtain axis description as Fourier components : important for output to VMEC (at elast approximately)
+        # Obtain axis description as Fourier components : important for output to VMEC (at least approximately)
         ntor = 10
         rc, rs, zc, zs = to_Fourier_axis(self.R0, self.Z0, self.nfp, ntor = ntor, lasym = False, phi_in = self.phi)
         self.Raxis = {"type": "fourier", "input_value": {}}
@@ -104,63 +95,26 @@ def init_axis(self, omn_complete = True):
         self.Zaxis["input_value"]["cos"] = zc
         self.Zaxis["input_value"]["sin"] = zs
 
-        # Ell and phi relation
-        secular_part = self.phi / (2*np.pi/self.nfp) * self.L_in
-        non_secular_part = self.ell - secular_part
-        d_l_d_phi = self.L_in / (2*np.pi/self.nfp) + np.matmul(self.d_d_phi, non_secular_part)
-        d2_l_d_phi2 = np.matmul(self.d_d_phi, d_l_d_phi) 
+        # Computing dl/dphi = dl/dvarphi dvarphi/dphi
+        # Need to separate secular parts
+        d_l_d_varphi = abs_G0 / B0
+        d_phi_d_varphi = 1 - np.matmul(self.d_d_varphi, self.nu)
+        d_l_d_phi = d_l_d_varphi / d_phi_d_varphi
+        
+        # Construct the derivative in phi
+        self.d_d_phi = np.zeros((self.nphi, self.nphi))
+        for j in range(self.nphi):
+            self.d_d_phi[j,:] = self.d_d_varphi[j,:] / d_phi_d_varphi[j]
+        d2_l_d_phi2 = np.matmul(self.d_d_phi, d_l_d_phi)
         d3_l_d_phi3 = np.matmul(self.d_d_phi, d2_l_d_phi2)
 
-        # Picard iteration is used to find varphi and G0
-        # Initialise nu = varphi - phi, which must be periodic
-        nu = np.zeros((self.nphi,))
-        num_iter_max = 20   # Max number of iterations
-        for j in range(num_iter_max):
-            # Nu from previous iteration for reference
-            last_nu = nu
-            # Update varphi
-            varphi = self.phi + nu
-            # In here B0_in is assumed to be provided in varphi
-            B0 = self.evaluate_input_on_grid(self.B0_in, varphi) 
-            # Construct G0 (everything is in the equally spaced phi grid)
-            abs_G0 = np.sum(B0 * d_l_d_phi) / self.nphi
-            # Update nu by inverting d varphi / d phi - 1 = d nu / d phi and 
-            # d l/d phi = (abs_G0/B0) d varphi/d phi
-            rhs = -1 + d_l_d_phi * B0 / abs_G0
-            nu = np.linalg.solve(self.d_d_phi+self.interpolateTo0, rhs) # Include interpolateTo0 to make matrix invertible, nu = 0 at origin
-            # Relative error in nu
-            norm_change = np.sqrt(sum((nu-last_nu)**2)/self.nphi)
-            logger.debug("  Iteration {}: |change to nu| = {}".format(j, norm_change))
-            # Exit iteration if nu converged
-            if norm_change < 1e-17:
-                break
-
-        # Final value for varphi
-        varphi = self.phi + nu
-        self.varphi = varphi
-
-        # Construct nu
-        self.nu_spline = self.convert_to_spline(nu)
-        self.nu_spline_of_varphi = spline(np.append(self.varphi,self.varphi[0]+2*np.pi/self.nfp), \
-                                          np.append(self.varphi-self.phi,self.varphi[0]-self.phi[0]), bc_type='periodic')
-
         # Final value for B0
-        B0 = self.evaluate_input_on_grid(self.B0_in, varphi)
         Bbar = 1 # self.spsi * np.mean(self.B0)
         self.B0_spline = self.convert_to_spline(B0)
 
         # Final value for G0
-        abs_G0 = np.sum(B0 * d_l_d_phi) / self.nphi
         G0 = self.sG*abs_G0
         abs_G0_over_B0 = np.abs(G0/Bbar)
-
-        # Length along the axis
-        self.d_l_d_varphi = self.sG * G0 / self.B0   
-
-        # Derivative in varphi
-        self.d_d_varphi = np.zeros((self.nphi, self.nphi))
-        for j in range(self.nphi):
-            self.d_d_varphi[j,:] = self.d_d_phi[j,:] * self.sG * G0 / (self.B0[j] * d_l_d_phi[j])
 
         ## Evaluation of d ##
         if not self.omn:
@@ -193,7 +147,7 @@ def init_axis(self, omn_complete = True):
 
         self.B0 = B0; self.Bbar = Bbar
         self.G0 = G0; self.abs_G0_over_B0 = abs_G0_over_B0
-        self.d_l_d_phi = d_l_d_phi; self.d2_l_d_phi2 = d2_l_d_phi2; self.d3_l_d_phi3 = d3_l_d_phi3
+        self.d_l_d_phi = d_l_d_phi; self.d2_l_d_phi2 = d2_l_d_phi2; self.d3_l_d_phi3 = d3_l_d_phi3; self.d_l_d_varphi = d_l_d_varphi
         self.d_curvature_d_varphi = np.matmul(self.d_d_varphi, self.curvature); self.d_torsion_d_varphi = np.matmul(self.d_d_varphi, self.torsion)
         self.d_curvature_d_varphi_at_0 = self.d_curvature_d_varphi[0]
         self.d_d_d_varphi_at_0 = np.matmul(self.d_d_varphi, self.d)[0]
