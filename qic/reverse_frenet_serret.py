@@ -6,8 +6,8 @@ Given the Frenet description of a curve, construct its cylindrical coordinate fo
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.integrate import solve_ivp, cumulative_trapezoid
-from scipy.interpolate import PchipInterpolator
+from scipy.integrate import solve_ivp, cumulative_trapezoid, quad
+from scipy.interpolate import PchipInterpolator, make_interp_spline
 from sklearn.decomposition import PCA
 from scipy.spatial.transform import Rotation as R
 from qic.fourier_interpolation import fourier_interpolation
@@ -92,13 +92,108 @@ def solve_frenet_serret(kappa, tau, ell):
     
     return T, N, B
 
+def solve_frenet_serret_fun(kappa, tau, ell):
+    # Initial conditions: T0, N0, B0
+    T0 = np.array([1, 0, 0])
+    N0 = np.array([0, 1, 0])
+    B0 = np.array([0, 0, 1])
+    
+    y0 = np.concatenate((T0, N0, B0))
+    
+    if callable(kappa) and callable(tau):
+        kappa_func = kappa
+        tau_func = tau
+    else:
+        # Periodic spline interpolation for kappa and tau
+        kappa_func = PchipInterpolator(ell, kappa, axis=0)
+        tau_func = PchipInterpolator(ell, tau, axis=0)
+
+    # Solve ODE
+    solution = solve_ivp(frenet_serret, [ell[0], ell[-1]], y0, t_eval=ell, args=(kappa_func, tau_func), \
+                         method='DOP853', rtol = 1e-13, atol = 1e-13, dense_output=True)
+    
+    # Separate basis vectors
+    T_fun = lambda x: solution.sol(x)[:3].T
+    N_fun = lambda x: solution.sol(x)[3:6].T
+    B_fun = lambda x: solution.sol(x)[6:9].T
+    
+    return T_fun, N_fun, B_fun
+
 def integrate_tangent(T, ell):
     # Integrate the tangent vector to get the position
-    position = np.zeros((len(ell), 3))
-    for i in range(1, len(ell)):
-        dL = ell[i] - ell[i-1]
-        position[i] = position[i-1] + T[i-1] * dL
+    position = cumulative_trapezoid(T, ell, initial = 0.0, axis=0)
+
     return position
+
+def find_position_curve_point(T_fun, ell):
+    # Integrate the tangent vector to get the position
+    position = np.zeros(3)
+    for i in range(3):
+        fun = lambda x: T_fun(x)[i]
+        position[i] = quad(fun, 0, ell, epsabs = 1e-14, epsrel = 1e-14)[0]
+    return position
+
+def find_ss_points(self, T_fun):
+    # Two sets of ss points
+    set_1_ss_points = np.arange(self.nfp) * self.L_in
+
+    # Integrate the tangent vector to get the position
+    pos_set_1 = []
+    pos_set_2 = []
+    for i, L_val in enumerate(set_1_ss_points):
+        pos_set_2.append(find_position_curve_point(T_fun, L_val + 0.5*self.L_in))
+        if i == 0:
+            pos_set_1.append([0.0, 0.0, 0.0])
+        else:
+            pos_set_1.append(find_position_curve_point(T_fun, L_val))
+
+    return pos_set_1, pos_set_2
+
+def find_centre(points):
+    return np.mean(points, axis=0)
+
+def compute_normal_poly(points):
+    v1 = points[1] - points[0]
+    v2 = points[2] - points[0]
+    normal = np.cross(v1, v2)
+    return normal / np.linalg.norm(normal)
+
+def rotation_matrix(rotation_axis, theta):
+    # Rotate by angle theta around rotation_axis
+    rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
+    r = R.from_rotvec(theta * rotation_axis)
+    return r.as_matrix()
+
+def align_to_z_plane(points):
+    normal = compute_normal_poly(points)
+    z_axis = np.array([0, 0, 1])
+    if np.allclose(normal, z_axis):
+        return points, np.eye(3)  # Already aligned
+    rotation_axis = np.cross(normal, z_axis)
+    rotation_angle = np.arccos(np.dot(normal, z_axis))
+    R = rotation_matrix(rotation_axis, rotation_angle)
+    return np.dot(points, R.T), R
+
+def align_vertex_to_x_axis(points):
+    vertex = points[0]
+    phi = np.arctan2(vertex[1], vertex[0])
+    Rz = np.array([
+        [np.cos(-phi), -np.sin(-phi), 0],
+        [np.sin(-phi), np.cos(-phi), 0],
+        [0, 0, 1]
+    ])
+    return np.dot(points, Rz.T), Rz
+
+def transform_polygon(points):
+    center = find_centre(points)
+    points_centred = points - center
+    points_aligned_z, R1 = align_to_z_plane(points_centred)
+    points_aligned_xy, R2 = align_vertex_to_x_axis(points_aligned_z)
+    total_rotation_matrix = np.dot(R2, R1)
+    return center, points_aligned_xy, total_rotation_matrix
+
+def transform_vector_field(vectors, rotation_matrix):
+    return np.dot(vectors, rotation_matrix.T)
 
 def cartesian_to_cylindrical(position):
     # Construct cylindrical (R, Theta, Z)
@@ -137,12 +232,12 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         if isinstance(varphi, list):
             varphi = np.array(varphi)
             varphi_in = np.array(varphi)   # Enpoint
-        if isinstance(ell, np.ndarray):
+        if isinstance(varphi, np.ndarray):
             for i in range(self.nfp - 1):
                 varphi = np.concatenate((varphi, varphi_in + (i+1)*2*np.pi/self.nfp))
             varphi = np.append(varphi, 2*np.pi)
         else:
-            raise TypeError('Invalid type for torsion input.')
+            raise TypeError('Invalid type for varphi input.')
         
         # ell
         ell_in = ell.copy()
@@ -202,18 +297,25 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     ##############################
     T, N, B = solve_frenet_serret(kappa, tau, ell)
     position = integrate_tangent(T, ell)
+
+    T_fun, _, _ = solve_frenet_serret_fun(kappa, tau, ell)
+    set1, _ = find_ss_points(self, T_fun)
+    center, ss_points, rotation_matrix = transform_polygon(set1)
     
     #####################
     # CHOOSE THE Z AXIS #
     #####################
+    # # Align the curve to minimize Z excursion
+    # aligned_position, _, rotation_matrix = align_with_min_z_excursion(position)
     # Align the curve to minimize Z excursion
-    aligned_position, _, rotation_matrix = align_with_min_z_excursion(position)
+    aligned_position = np.dot(position - center, rotation_matrix.T)
 
     ######################################
     # CONVERT TO CYLINDRICAL COORDINATES #
     ######################################
     # Convert curve position to cylindrical coordinates
     R, phi, Z = cartesian_to_cylindrical(aligned_position)
+    R_ss, phi_ss, Z_ss = cartesian_to_cylindrical(ss_points)
 
     # Rotate the Frenet basis vectors accordingly
     aligned_T = np.einsum('ji,ki->kj', rotation_matrix, T)
@@ -247,7 +349,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
 
         return new_vector
 
-    mismatch = [T[-1]-T[0], N[-1]+N[0],B[-1]+B[0], position[-1] - position[0]]
+    mismatch = [T[-1]-T[0], N[-1]+N[0],[R_ss[1]-R_ss[0], Z_ss[1]-Z_ss[0], phi_ss[1]-phi_ss[0]-2*np.pi/self.nfp], position[-1] - position[0]]
 
     if minimal:
         return mismatch
@@ -270,22 +372,23 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         else:
             sign_half = 1
         if periodic:
-            wrapped_grid = grid[:-1]
+            wrapped_grid = grid
             # ind_wrap = np.argsort(wrapped_grid)
             if len(np.shape(array)) > 1:
                 sp = []
                 for j in range(3):
-                    sp_temp = PchipInterpolator(np.append(wrapped_grid, wrapped_grid[0] + 2*np.pi),\
-                                                 np.append(array[:-1,j], sign_half*array[0,j]), axis=0, extrapolate=False)
+                    # sp_temp = PchipInterpolator(wrapped_grid, array[j], axis=0, extrapolate=False)
+                    sp_temp = make_interp_spline(wrapped_grid, array[j], k = 7, axis=0)
                     sp_cyclic = lambda x: sp_temp(x % (2*np.pi))
                     sp.append([sp_cyclic])
             else:
-                sp_temp = PchipInterpolator(np.append(wrapped_grid, wrapped_grid[0] + 2*np.pi),\
-                                                 np.append(array[:-1], sign_half*array[0]), axis=0, extrapolate=False)
+                # sp_temp = PchipInterpolator(wrapped_grid, array, axis=0, extrapolate=False)
+                sp_temp = make_interp_spline(wrapped_grid, array, k=7, axis=0)
                 sp = lambda x: sp_temp(x % (2*np.pi))
         else:
             wrapped_grid = grid
-            sp = PchipInterpolator(wrapped_grid, array)
+            # sp = PchipInterpolator(wrapped_grid, array)
+            sp = make_interp_spline(wrapped_grid, array, k = 7)
         return sp
     
     # Periodic spline interpolation for kappa and tau (assume varphi is equally spaced)
@@ -367,7 +470,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         ax.plot(origin[0],origin[1],origin[2], label='Curve')
 
         # Plotting normal and binormal vectors as arrows
-        stp = 4
+        stp = 50
         num = int(nphi/stp)
 
         for i in range(num):
