@@ -520,7 +520,9 @@ def r1_diagnostics(self):
     p = self.X1s * self.X1s + self.X1c * self.X1c + self.Y1s * self.Y1s + self.Y1c * self.Y1c
     q = self.X1s * self.Y1c - self.X1c * self.Y1s
     self.elongation = (p + np.sqrt(p * p - 4 * q * q)) / (2 * np.abs(q))
-    self.mean_elongation = np.trapz(self.elongation * self.d_l_d_varphi, self.varphi) / np.trapz(self.d_l_d_varphi, self.varphi)
+    varphi_ext = np.append(self.varphi, self.varphi[0] + 2*np.pi/self.nfp)
+    self.mean_elongation = np.trapz(np.append(self.elongation * self.d_l_d_varphi,self.elongation[0] * self.d_l_d_varphi[0]), varphi_ext) /\
+          np.trapz(np.append(self.d_l_d_varphi,self.d_l_d_varphi[0]), varphi_ext)
     # index = np.argmax(self.elongation)
     self.max_elongation = -fourier_minimum(-self.elongation)
 

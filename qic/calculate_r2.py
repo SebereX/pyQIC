@@ -62,7 +62,8 @@ def calculate_r2(self):
     # The expression can be found in Eq.(A50) in [Landreman, Sengupta (2019)]
     # Part I: ∫dφ/B0**2/(2π/N) with the integral being over varphi in a period. Could do a sum in the 
     # regular phi grid using dφ = (dφ/dφ_c) dφ_c = dφ_c (dl/dφ_c)/(dl/dφ) 
-    average_one_over_B0_squared_over_varphi = np.trapz(1 / (B0 * B0), self.varphi) / (2*np.pi/self.nfp)
+    average_one_over_B0_squared_over_varphi = np.trapz(np.append(1 / (B0 * B0),1 / (B0[0] * B0[0])), \
+                                                       np.append(self.varphi, self.varphi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
     # average_one_over_B0_squared_over_varphi = np.sum(1 / (B0 * B0)) / nphi
 
     # Put all pieces together, Eq.(A50) in [Landreman, Sengupta (2019)] 
@@ -321,11 +322,13 @@ def calculate_r2(self):
     
     ## Compute associated features of B20 ##
     # Average B20 in varphi
-    normalizer = 1 / np.trapz(self.d_l_d_phi, self.phi)
-    self.B20_mean = np.trapz(B20 * self.d_l_d_phi, self.phi) * normalizer
+    phi_ext = np.append(self.phi, self.phi[0] + 2*np.pi/self.nfp)
+    normalizer = 1 / np.trapz(np.append(self.d_l_d_phi,self.d_l_d_phi[0]), phi_ext)
+    self.B20_mean = np.trapz(np.append(B20 * self.d_l_d_phi, B20[0] * self.d_l_d_phi[0]), phi_ext) * normalizer
     # Variation in B20
     self.B20_anomaly = B20 - self.B20_mean
-    self.B20_residual = np.sqrt(np.trapz((B20 - self.B20_mean) * (B20 - self.B20_mean) * self.d_l_d_phi, self.phi) * normalizer) / B0
+    temp = (B20 - self.B20_mean) * (B20 - self.B20_mean) * self.d_l_d_phi
+    self.B20_residual = np.sqrt(np.trapz(np.append(temp,temp[0]), phi_ext) * normalizer) / B0
     self.B20_variation = np.max(B20) - np.min(B20)
     
     #####################

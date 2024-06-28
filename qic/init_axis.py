@@ -60,6 +60,7 @@ def init_axis(self, omn_complete = True):
     # First important step is to distinguish between the Frenet and R/Z options
     if self.frenet:
         # Construct directly from the inputs
+        self.reg_grid = 'varphi'
         varphi = self.varphi
         self.curvature = self.evaluate_input_on_grid(self.curvature_in, varphi, periodic = False)
         self.torsion = self.evaluate_input_on_grid(self.torsion_in, varphi)
@@ -155,6 +156,7 @@ def init_axis(self, omn_complete = True):
         self.d_d_d_varphi_at_0 = np.matmul(self.d_d_varphi, self.d)[0]
 
     else: 
+        self.reg_grid = 'phi'
         # When R/Z coordinates are provided, then we need to compute the Frenet frame
         ###############################
         # CONSTRUCT R/Z & DERIVATIVES #
@@ -295,11 +297,12 @@ def init_axis(self, omn_complete = True):
 
         ## Find immediate properties of the curve ##
         # Total axis length (taking the nfp into account)
-        axis_length = np.trapz(d_l_d_phi, phi) * nfp
+        phi_ext = np.append(phi,phi[0]+2*np.pi/nfp)
+        axis_length = np.trapz(np.append(d_l_d_phi,d_l_d_phi[0]), phi_ext) * nfp
         # Mean major radius
-        mean_of_R = np.trapz(R0 * d_l_d_phi, phi) * nfp / axis_length
+        mean_of_R = np.trapz(np.append(R0 * d_l_d_phi, R0[0] * d_l_d_phi[0]), phi_ext) * nfp / axis_length
         # Mean vertical displacement
-        mean_of_Z = np.trapz(Z0 * d_l_d_phi, phi) * nfp / axis_length
+        mean_of_Z = np.trapz(np.append(Z0 * d_l_d_phi, Z0[0] * d_l_d_phi[0]), phi_ext) * nfp / axis_length
 
         # standard_deviation_of_R = np.sqrt(np.sum((R0 - mean_of_R) ** 2 * d_l_d_phi) * d_phi * nfp / axis_length)
         # standard_deviation_of_Z = np.sqrt(np.sum((Z0 - mean_of_Z) ** 2 * d_l_d_phi) * d_phi * nfp / axis_length)
@@ -397,7 +400,9 @@ def init_axis(self, omn_complete = True):
         ###############################################
         if self.omn == False:
             # Compute G0 for QS field: in here B0 is a scalar (this was done in __init__)
-            G0 = self.sG * np.trapz(self.B0 * d_l_d_phi, self.phi) / (2*np.pi/self.nfp)
+            G0 = self.sG * np.trapz(np.append(B0 * d_l_d_phi,B0[0] * d_l_d_phi[0]), \
+                                    np.append(self.phi,self.phi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
+
             abs_G0_over_B0 = self.sG*G0/self.B0
 
             # Reference Bbar definition
@@ -441,7 +446,8 @@ def init_axis(self, omn_complete = True):
                 # In here B0_in is assumed to be provided in varphi
                 B0 = self.evaluate_input_on_grid(self.B0_in, varphi) 
                 # Construct G0 (everything is in the equally spaced phi grid)
-                abs_G0 = np.trapz(B0 * d_l_d_phi, phi) / (2*np.pi/self.nfp)
+                abs_G0 = np.trapz(np.append(B0 * d_l_d_phi, B0[0] * d_l_d_phi[0]), \
+                                        np.append(phi,phi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
                 # Update nu by inverting d varphi / d phi - 1 = d nu / d phi and 
                 # d l/d phi = (abs_G0/B0) d varphi/d phi
                 rhs = -1 + d_l_d_phi * B0 / abs_G0
@@ -462,7 +468,8 @@ def init_axis(self, omn_complete = True):
             self.Bbar = self.spsi * np.mean(self.B0)
 
             # Final value for G0
-            G0 = self.sG * np.trapz(self.B0 * d_l_d_phi, phi) / (2*np.pi/self.nfp)
+            G0 = self.sG * np.trapz(np.append(B0 * d_l_d_phi,B0[0] * d_l_d_phi[0]), \
+                                        np.append(phi,phi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
             abs_G0_over_B0 = np.abs(G0/self.Bbar)
 
             # Length along the axis

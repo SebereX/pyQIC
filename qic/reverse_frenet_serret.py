@@ -454,21 +454,24 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
     zc = np.zeros(int(ntor + 1))
     zs = np.zeros(int(ntor + 1))
     factor = 2 / phi_conversion[-1]
+    phi_ext = np.append(phi_conversion, phi_conversion[0] + 2*np.pi/nfp)
+    R0_ext = np.append(R0, R0[0])
+    Z0_ext = np.append(Z0, Z0[0])
 
     for n in range(1, ntor+1):
-        angle = - n * nfp * phi_conversion
+        angle = - n * nfp * phi_ext
         sinangle = np.sin(angle)
         cosangle = np.cos(angle)
         factor2 = factor
         # The next 2 lines ensure inverse Fourier transform(Fourier transform) = identity
         # if n == 0: factor2 = factor2 / 2
-        rc[n] = np.trapz(R0 * cosangle * factor2, phi_conversion)
-        rs[n] = np.trapz(R0 * sinangle * factor2, phi_conversion)
-        zc[n] = np.trapz(Z0 * cosangle * factor2, phi_conversion)
-        zs[n] = np.trapz(Z0 * sinangle * factor2, phi_conversion)
+        rc[n] = np.trapz(R0_ext * cosangle * factor2, phi_ext)
+        rs[n] = np.trapz(R0_ext * sinangle * factor2, phi_ext)
+        zc[n] = np.trapz(Z0_ext * cosangle * factor2, phi_ext)
+        zs[n] = np.trapz(Z0_ext * sinangle * factor2, phi_ext)
 
-    rc[0] = np.trapz(R0, phi_conversion) / (2 * np.pi / nfp)
-    zc[0] = np.trapz(Z0, phi_conversion) / (2 * np.pi / nfp)
+    rc[0] = np.trapz(R0_ext, phi_ext) / (2 * np.pi / nfp)
+    zc[0] = np.trapz(Z0_ext, phi_ext) / (2 * np.pi / nfp)
 
     if not lasym:
         rs = rs * 0.0
