@@ -41,6 +41,7 @@ def calculate_r2(self):
     sG = self.sG
     I2_over_Bbar = self.I2 / self.Bbar
     d_d_varphi = self.d_d_varphi.copy()
+
     # If half helicity axes are considered, we need to introduce a differentiation matrix in the extended domain
     if np.mod(self.helicity, 1) == 0.5:
         if self.diff_finite:
@@ -49,7 +50,7 @@ def calculate_r2(self):
             d_d_varphi_copy[:diff_order,-diff_order:] = -d_d_varphi_copy[:diff_order,-diff_order:]
             d_d_varphi_copy[-diff_order:,:diff_order] = -d_d_varphi_copy[-diff_order:,:diff_order]
         else:
-            d_d_varphi_copy = spectral_diff_matrix_extended(self.nphi)
+            d_d_varphi_copy = spectral_diff_matrix_extended(self.nphi, xmin = 0, xmax = 2*np.pi/self.nfp)
         d_d_varphi_ext = d_d_varphi_copy
         self.d_d_varphi_ext = d_d_varphi_copy
     else:

@@ -252,8 +252,6 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     if minimal:
         return mismatch
     
-    print(mismatch)
-
     aligned_T = change_vector_to_cylindrical(phi, aligned_T)
     aligned_N = change_vector_to_cylindrical(phi, aligned_N)
     aligned_B = change_vector_to_cylindrical(phi, aligned_B)
@@ -302,29 +300,6 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         tau = tau(ell)
         
     nu_func = make_spline(varphi, varphi - phi, periodic = True)
-
-    # Check if the phi grid has the right bounds
-    # print("Phi end: ", phi[-1] - 2*np.pi)
-    # import matplotlib.pyplot as plt
-    # plt.plot(phi)
-    # plt.show()
-    # ind_period = next((index for index, value in enumerate(phi - 2*np.pi/self.nfp) if value > 0), None)
-    # varphi_iter = varphi.copy()
-    # ind = 0
-    # res = 100
-    # import matplotlib.pyplot as plt
-    # while res > 1e-6 or ind > 50:
-    #     B0 = self.evaluate_input_on_grid(self.B0_in, varphi_iter)
-    #     varphi_new = cumulative_trapezoid(B0, ell, initial=0.0)
-    #     varphi_new = varphi_new/varphi_new[-1]*2*np.pi/self.L_in/self.nfp
-    #     res = np.mean(np.abs(varphi_new - varphi_iter))
-    #     varphi_iter = varphi_new
-    #     ind += 1
-    #     print(ind, res)
-    #     plt.plot(varphi_new)
-    # plt.show()
-    # print(phi[-1])
-    # varphi = varphi_iter
 
     # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
     # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in vylindrical phi.
@@ -375,13 +350,6 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     self.tangent_cylindrical[:,0] = self.tangent_R_spline(phi_out)
     self.tangent_cylindrical[:,1] = self.tangent_phi_spline(phi_out)
     self.tangent_cylindrical[:,2] = self.tangent_z_spline(phi_out)
-
-    # self.nu_spline_of_phi = make_spline(np.append(self.varphi,self.varphi[0]+2*np.pi/self.nfp), \
-    #                                       np.append(self.varphi-self.phi,self.varphi[0]-self.phi[0]), bc_type='periodic')
-
-    # self.varphi = varphi_func(phi_new) # /varphi_func(2*np.pi/self.nfp)*2*np.pi/self.nfp
-    # self.varphi = phi_new + smooth_fourier(varphi_func(phi_centred) - phi_centred, \
-    #                         self.nfp, n_harm = 30, phi_out = phi_new, even = False)
 
     #############
     # PLOT AXIS #
@@ -474,7 +442,6 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
     if isinstance(phi_in, list) or isinstance(phi_in, np.ndarray):
         phi_conversion = np.array(phi_in)
         nphi = len(phi_conversion)
-        print(len(R0), print(nphi))
         assert len(R0) == nphi
         assert len(Z0) == nphi
     else:

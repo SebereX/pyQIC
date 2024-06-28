@@ -42,7 +42,7 @@ def self_consistent_ell_from_varphi(self):
     B0 = self.evaluate_input_on_grid(self.B0_in, self.varphi) 
 
     # Compute |G0|
-    abs_G0 =  self.L_in / (2*np.pi/self.nfp) * self.nphi/np.sum(1/B0)
+    abs_G0 =  self.L_in / (2*np.pi/self.nfp) * nphi/np.sum(1/B0)
 
     # Separate l into l = ltilde + L_in varphi/ (2pi/N), which must be periodic
     rhs = abs_G0/B0 - self.L_in / (2*np.pi/self.nfp)
