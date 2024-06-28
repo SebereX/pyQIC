@@ -90,7 +90,7 @@ def init_axis(self, omn_complete = True):
         
         # Obtain axis description as Fourier components : important for output to VMEC (at least approximately)
         ntor = 10
-        rc, rs, zc, zs = to_Fourier_axis(self.R0, self.Z0, self.nfp, ntor = ntor, lasym = False, phi_in = self.phi)
+        rc, rs, zc, zs = to_Fourier_axis(self.R0, self.Z0, self.nfp, ntor = ntor, lasym = True, phi_in = self.phi)
         self.Raxis = {"type": "fourier", "input_value": {}}
         self.Zaxis = {"type": "fourier", "input_value": {}}
         self.Raxis["input_value"]["cos"] = rc

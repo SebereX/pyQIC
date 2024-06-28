@@ -556,13 +556,14 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
     rs = np.zeros(int(ntor + 1))
     zc = np.zeros(int(ntor + 1))
     zs = np.zeros(int(ntor + 1))
-    factor = 2 / phi_conversion[-1]
+    factor = 2 / (2*np.pi/nfp)
     phi_ext = np.append(phi_conversion, phi_conversion[0] + 2*np.pi/nfp)
     R0_ext = np.append(R0, R0[0])
     Z0_ext = np.append(Z0, Z0[0])
 
     for n in range(1, ntor+1):
-        angle = - n * nfp * phi_ext
+        # The angle with positive sign (when using it for VMEC will need sign)
+        angle = n * nfp * phi_ext
         sinangle = np.sin(angle)
         cosangle = np.cos(angle)
         factor2 = factor
