@@ -10,9 +10,6 @@ from scipy.integrate import solve_ivp, cumulative_trapezoid, quad
 from scipy.interpolate import PchipInterpolator, make_interp_spline
 from sklearn.decomposition import PCA
 from scipy.spatial.transform import Rotation as R
-from qic.fourier_interpolation import fourier_interpolation
-from qic.spectral_diff_matrix import construct_periodic_diff_matrix
-
 
 logger = logging.getLogger(__name__)
 
@@ -323,7 +320,8 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     aligned_B = np.einsum('ji,ki->kj', rotation_matrix, B)
 
     # Check whether the sense of the axis is in the positive cylindrical angle
-    sense_axis = (phi[1] % (2*np.pi)) - (phi[0] % (2*np.pi))
+    phi = np.unwrap(phi)
+    sense_axis = phi[1] - phi[0]
 
     if sense_axis < 0 or sense_axis > np.pi: # Care for potential sudden jump
         # Change coordinates accordingly
@@ -338,7 +336,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         aligned_position[:,2] *= -1
         aligned_T[:,2] *= -1
         aligned_N[:,2] *= -1
-        aligned_B[:,2] *= -1
+        aligned_B[:,2] *= -1   
     
     # Need to translate aligned vectors to cylindrical coordinates
     def change_vector_to_cylindrical(phi, vector):
@@ -359,8 +357,9 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     aligned_B = change_vector_to_cylindrical(phi, aligned_B)
 
     # Redefine the cylindrical angle so that the first point is phi = 0 (the cylindrical representation should not change
-    phi = np.unwrap(phi)
-    phi = (phi-phi[0])/phi[-1]*2*np.pi
+    assert np.sign(phi[-1]-phi[0]) > 0
+    print('Mismatch in phi_cyl: ', phi[-1]-2*np.pi)
+    phi = (phi-phi[0])/(phi[-1]-phi[0])*2*np.pi
 
     ################
     # SPLINES OF r #
@@ -402,8 +401,6 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         kappa = kappa(ell)
         tau = tau(ell)
         
-    nu_func = make_spline(varphi, varphi - phi, periodic = True)
-
     # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
     # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in vylindrical phi.
     self.normal_R_spline = make_spline(phi, aligned_N[:,0], half = flag_half)
@@ -429,6 +426,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     ##############################
     # Do nothing to the curvature and torsion: these are assumed to be given in varphi grid
     # Evaluate phi
+    nu_func = make_spline(varphi, varphi - phi, periodic = True)
     self.nu = nu_func(varphi_in)
     phi_out = varphi_in - self.nu
     self.phi = phi_out
@@ -470,7 +468,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         ax.plot(origin[0],origin[1],origin[2], label='Curve')
 
         # Plotting normal and binormal vectors as arrows
-        stp = 50
+        stp = int(nphi/10)
         num = int(nphi/stp)
 
         for i in range(num):

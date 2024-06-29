@@ -85,8 +85,9 @@ def init_axis(self, omn_complete = True):
         # Evaluate the axis in cylindrical coordinates (note that it assumes the curve closes; could have
         # some discontinuity, might need an additional optimisation to close the curve)
         # It modifies phi, nu and the Frenet geometry accordingly, using varphi as regular grid
+        flag_half = (np.mod(self.helicity_in, 1) == 0.5) # If half helicity, take into account the flip of sign
         flag_func = True if ("function_ell" in self.curvature_in) else False
-        _ = invert_frenet_axis(self, self.curvature, self.torsion, self.ell, self.varphi, full_axis = True, func = flag_func)
+        _ = invert_frenet_axis(self, self.curvature, self.torsion, self.ell, self.varphi, full_axis = True, func = flag_func, flip = flag_half)
         
         # Obtain axis description as Fourier components : important for output to VMEC (at least approximately)
         ntor = 10
@@ -112,7 +113,7 @@ def init_axis(self, omn_complete = True):
         d3_l_d_phi3 = np.matmul(self.d_d_phi, d2_l_d_phi2)
 
         # Final value for B0
-        Bbar = 1 # self.spsi * np.mean(self.B0)
+        Bbar = self.spsi * np.mean(B0)
         self.B0_spline = self.convert_to_spline(B0) # splines are in phi
 
         # Final value for G0
@@ -121,7 +122,7 @@ def init_axis(self, omn_complete = True):
 
         ## Evaluation of d ##
         if not self.omn:
-            self.d_bar = self.etabar / curvature
+            self.d_bar = self.etabar / self.curvature
         else:
             d = np.zeros(self.nphi)
             if isinstance(self.d_in, dict):
@@ -136,7 +137,7 @@ def init_axis(self, omn_complete = True):
             # If only d_bar as an input, simply use that
             self.d_bar = dbar
         else:
-            self.d_bar = self.d / curvature
+            self.d_bar = self.d / self.curvature
 
         # Define auxiliary quantity
         self.etabar_squared_over_curvature_squared = (B0 / Bbar ) * self.d_bar**2
@@ -400,7 +401,7 @@ def init_axis(self, omn_complete = True):
         ###############################################
         if self.omn == False:
             # Compute G0 for QS field: in here B0 is a scalar (this was done in __init__)
-            G0 = self.sG * np.trapz(np.append(B0 * d_l_d_phi,B0[0] * d_l_d_phi[0]), \
+            G0 = self.sG * np.trapz(np.append(self.B0 * d_l_d_phi, self.B0[0] * d_l_d_phi[0]), \
                                     np.append(self.phi,self.phi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
 
             abs_G0_over_B0 = self.sG*G0/self.B0

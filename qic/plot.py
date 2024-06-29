@@ -31,7 +31,7 @@ def plot(self, newfigure=True, show=True, savefig=None):
             nrows = 3
             ncols = 6
     elif self.order == 'r2':
-        nrows = 4
+        nrows = 5
         ncols = 8
         if self.omn:
             nrows=6
@@ -361,7 +361,7 @@ def get_boundary(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, n
 
 def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections=8, mpol=13, ntor=25,
          fieldlines=False, savefig=None, colormap=None, azim_default=None, threeD=True, n_field_lines=1,
-         show=True, axis = None, legend = True, **kwargs):
+         show=True, axis = None, plot_3d = True, legend = True, **kwargs):
     """
     Plot the boundary of the near-axis configuration. There are two main ways of
     running this function.
@@ -440,7 +440,11 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
             label = r'$\phi={7\pi}/$' + str(4 * self.nfp)
         else:
             label = '_nolegend_'
-        color = next(ax._get_lines.prop_cycler)['color']
+        if "color" in kwargs:
+            color = kwargs["color"]
+            kwargs.pop("color")
+        else:
+            color = next(ax._get_lines.prop_cycler)['color']
         # Plot location of the axis
         plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, label=label, color=color)
         if threeD == True:

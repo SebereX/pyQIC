@@ -156,7 +156,7 @@ class Qic():
         if omn == False:
             if not (B0["type"] == 'scalar'):
                 raise ValueError('Input B0 is not a scalar as it should for a QS field.')
-            self.B0 = B0["input_value"]
+            self.B0 = self.evaluate_input_on_grid(B0, self.phi)
         else:
             # If QI, evaluate B0 for now on the phi grid and store in B0
             self.B0 = self.evaluate_input_on_grid(B0, self.phi)

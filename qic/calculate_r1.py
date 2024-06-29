@@ -451,7 +451,7 @@ def r1_diagnostics(self):
 
         # Construct B1 components in the helical basis
         self.B1c = self.etabar * self.B0
-        self.B1s = 0.0
+        self.B1s = 0.0 * self.B0
 
     # Make splines for B1 : if float, it also works 
     self.B1c_spline = self.convert_to_spline(self.B1c)
