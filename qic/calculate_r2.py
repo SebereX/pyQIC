@@ -55,6 +55,7 @@ def calculate_r2(self):
         self.d_d_varphi_ext = d_d_varphi_copy
     else:
         d_d_varphi_ext = self.d_d_varphi.copy()
+        self.d_d_varphi_ext = d_d_varphi_ext
 
     ##############
     # COMPUTE G2 #
@@ -322,13 +323,13 @@ def calculate_r2(self):
     
     ## Compute associated features of B20 ##
     # Average B20 in varphi
-    phi_ext = np.append(self.phi, self.phi[0] + 2*np.pi/self.nfp)
-    normalizer = 1 / np.trapz(np.append(self.d_l_d_phi,self.d_l_d_phi[0]), phi_ext)
-    self.B20_mean = np.trapz(np.append(B20 * self.d_l_d_phi, B20[0] * self.d_l_d_phi[0]), phi_ext) * normalizer
+    varphi_ext = np.append(self.varphi, self.varphi[0] + 2*np.pi/self.nfp)
+    normalizer = 1 / np.trapz(np.append(self.d_l_d_varphi,self.d_l_d_varphi[0]), varphi_ext)
+    self.B20_mean = np.trapz(np.append(B20 * self.d_l_d_varphi, B20[0] * self.d_l_d_varphi[0]), varphi_ext) * normalizer
     # Variation in B20
     self.B20_anomaly = B20 - self.B20_mean
-    temp = (B20 - self.B20_mean) * (B20 - self.B20_mean) * self.d_l_d_phi
-    self.B20_residual = np.sqrt(np.trapz(np.append(temp,temp[0]), phi_ext) * normalizer) / B0
+    temp = (B20 - self.B20_mean) * (B20 - self.B20_mean) * self.d_l_d_varphi
+    self.B20_residual = np.sqrt(np.trapz(np.append(temp,temp[0]), varphi_ext) * normalizer) / B0
     self.B20_variation = np.max(B20) - np.min(B20)
     
     #####################
@@ -431,7 +432,7 @@ def calculate_r2(self):
 
         # Compute some derived quantities
         d_B0_d_varphi = np.matmul(self.d_d_varphi, self.B0)
-        d_d_d_varphi = np.matmul(self.d_d_varphi, self.d)
+        d_d_d_varphi = np.matmul(self.d_d_varphi_ext, self.d)
         d_2_B0_d_varphi2 = np.matmul(self.d_d_varphi, d_B0_d_varphi)
 
         ## Ideal stellarator symmetric QI at 2nd order ##

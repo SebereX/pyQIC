@@ -6,6 +6,7 @@ Given the Frenet description of a curve, construct its cylindrical coordinate fo
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import bisect
 from scipy.integrate import solve_ivp, cumulative_trapezoid, quad
 from scipy.interpolate import PchipInterpolator, make_interp_spline
 from sklearn.decomposition import PCA
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 def smooth_fourier(data, nfp, n_harm, phi_out, even = True):
     # Input grid
     nphi = len(data)
-    phi_in = np.linspace(0, 2 * np.pi / nfp, nphi, endpoint=False)
+    phi_in = np.linspace(0, 2 * np.pi, nphi, endpoint=False)
 
     # Harmonic components of axis position
     data_harm = np.zeros(int(n_harm + 1))
@@ -28,7 +29,7 @@ def smooth_fourier(data, nfp, n_harm, phi_out, even = True):
         smoothed_data = np.zeros(len(phi_out))
 
     for n in range(1, n_harm+1):
-        angle = - n * nfp * phi_in
+        angle = n * nfp * phi_in
         factor2 = factor
         # The next 2 lines ensure inverse Fourier transform(Fourier transform) = identity
         # if n == 0: factor2 = factor2 / 2
@@ -47,28 +48,31 @@ def frenet_serret(t, y, kappa_func, tau_func):
     # Frenet-Serret system of equations
 
     ## Define basis vectors ##
-    T = y[:3]
-    N = y[3:6]
-    B = y[6:9]
+    R = y[:3]
+    T = y[3:6]
+    N = y[6:9]
+    B = y[9:12]
     
     ## Curvature and torsion discrete ##
     kappa = kappa_func(t)
     tau = tau_func(t)
     
     ## Compute derivatives ##
+    dR_dt = T
     dT_dt = kappa * N
     dN_dt = -kappa * T + tau * B
     dB_dt = -tau * N
     
-    return np.concatenate((dT_dt, dN_dt, dB_dt))
+    return np.concatenate((dR_dt, dT_dt, dN_dt, dB_dt))
 
 def solve_frenet_serret(kappa, tau, ell):
     # Initial conditions: T0, N0, B0
+    R0 = np.array([0, 0, 0])
     T0 = np.array([1, 0, 0])
     N0 = np.array([0, 1, 0])
     B0 = np.array([0, 0, 1])
     
-    y0 = np.concatenate((T0, N0, B0))
+    y0 = np.concatenate((R0, T0, N0, B0))
     
     if callable(kappa) and callable(tau):
         kappa_func = kappa
@@ -83,19 +87,21 @@ def solve_frenet_serret(kappa, tau, ell):
                          method='DOP853', rtol = 1e-13, atol = 1e-13)
     
     # Separate basis vectors
-    T = solution.y[:3].T
-    N = solution.y[3:6].T
-    B = solution.y[6:9].T
+    R = solution.y[:3].T
+    T = solution.y[3:6].T
+    N = solution.y[6:9].T
+    B = solution.y[9:12].T
     
-    return T, N, B
+    return T, N, B, R
 
 def solve_frenet_serret_fun(kappa, tau, ell):
     # Initial conditions: T0, N0, B0
+    R0 = np.array([0, 0, 0])
     T0 = np.array([1, 0, 0])
     N0 = np.array([0, 1, 0])
     B0 = np.array([0, 0, 1])
     
-    y0 = np.concatenate((T0, N0, B0))
+    y0 = np.concatenate((R0, T0, N0, B0))
     
     if callable(kappa) and callable(tau):
         kappa_func = kappa
@@ -110,11 +116,12 @@ def solve_frenet_serret_fun(kappa, tau, ell):
                          method='DOP853', rtol = 1e-13, atol = 1e-13, dense_output=True)
     
     # Separate basis vectors
-    T_fun = lambda x: solution.sol(x)[:3].T
-    N_fun = lambda x: solution.sol(x)[3:6].T
-    B_fun = lambda x: solution.sol(x)[6:9].T
+    R_fun = lambda x: solution.sol(x)[:3].T
+    T_fun = lambda x: solution.sol(x)[3:6].T
+    N_fun = lambda x: solution.sol(x)[6:9].T
+    B_fun = lambda x: solution.sol(x)[9:12].T
     
-    return T_fun, N_fun, B_fun
+    return T_fun, N_fun, B_fun, R_fun
 
 def integrate_tangent(T, ell):
     # Integrate the tangent vector to get the position
@@ -130,19 +137,26 @@ def find_position_curve_point(T_fun, ell):
         position[i] = quad(fun, 0, ell, epsabs = 1e-14, epsrel = 1e-14)[0]
     return position
 
-def find_ss_points(self, T_fun):
+def find_ss_points(self, T_fun, position_fun = None):
     # Two sets of ss points
     set_1_ss_points = np.arange(self.nfp) * self.L_in
+
+    if callable(position_fun):
+        def find_pos_fun(x):
+            return position_fun(x)
+    else:
+        def find_pos_fun(x):
+            return find_position_curve_point(T_fun,x)
 
     # Integrate the tangent vector to get the position
     pos_set_1 = []
     pos_set_2 = []
     for i, L_val in enumerate(set_1_ss_points):
-        pos_set_2.append(find_position_curve_point(T_fun, L_val + 0.5*self.L_in))
+        pos_set_2.append(find_pos_fun(L_val + 0.5*self.L_in))
         if i == 0:
             pos_set_1.append([0.0, 0.0, 0.0])
         else:
-            pos_set_1.append(find_position_curve_point(T_fun, L_val))
+            pos_set_1.append(find_pos_fun(L_val))
 
     return pos_set_1, pos_set_2
 
@@ -292,18 +306,44 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     ##############################
     # SOLVE FRENET-SERRET SYSTEM #
     ##############################
-    T, N, B = solve_frenet_serret(kappa, tau, ell)
-    position = integrate_tangent(T, ell)
+    T_fun, N_fun, B_fun, position_fun = solve_frenet_serret_fun(kappa, tau, ell)
+    T = T_fun(ell)
+    N = N_fun(ell)
+    B = B_fun(ell)
+    position = position_fun(ell)
 
-    T_fun, _, _ = solve_frenet_serret_fun(kappa, tau, ell)
-    set1, _ = find_ss_points(self, T_fun)
-    center, ss_points, rotation_matrix = transform_polygon(set1)
+    # # For Newton solve trials
+    # self.fs_solve = np.concatenate((T[:-1,0],T[:-1,1],T[:-1,2],N[:-1,0],N[:-1,1],N[:-1,2],B[:-1,0],B[:-1,1],B[:-1,2]))
+    # self.curvature_ext = kappa(ell[:-1])
+    # self.torsion_ext = tau(ell[:-1])
     
     #####################
     # CHOOSE THE Z AXIS #
     #####################
-    # # Align the curve to minimize Z excursion
+    # # Align the curve to minimize Z excursion : numerical
     # aligned_position, _, rotation_matrix = align_with_min_z_excursion(position)
+
+    # Find set of SS points
+    set1, _ = find_ss_points(self, T_fun, position_fun=position_fun)
+
+    # Find the necessary rotation and shift of the coordinates to frame in cylindrical coordinates
+    center, ss_points, rotation_matrix = transform_polygon(set1)
+
+    # Functions for transformed positions and vectors
+    def aligned_position_fun(ell):
+        position = position_fun(ell)
+        return np.dot(position - center, rotation_matrix.T)
+    def aligned_FS_fun(ell):
+        if isinstance(ell, float):
+            ell = [ell]
+        T = T_fun(ell)
+        N = N_fun(ell)
+        B = B_fun(ell)
+        aligned_T = np.einsum('ji,ki->kj', rotation_matrix, T)
+        aligned_N = np.einsum('ji,ki->kj', rotation_matrix, N)
+        aligned_B = np.einsum('ji,ki->kj', rotation_matrix, B)
+        return aligned_T, aligned_N, aligned_B
+    
     # Align the curve to minimize Z excursion
     aligned_position = np.dot(position - center, rotation_matrix.T)
 
@@ -314,6 +354,12 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     R, phi, Z = cartesian_to_cylindrical(aligned_position)
     R_ss, phi_ss, Z_ss = cartesian_to_cylindrical(ss_points)
 
+    # Output to close curve
+    mismatch = [T[-1]-T[0], N[-1]+N[0],[R_ss[1]-R_ss[0], Z_ss[1]-Z_ss[0], phi_ss[1]-phi_ss[0]-2*np.pi/self.nfp], position[-1] - position[0]]
+
+    if minimal:
+        return mismatch
+
     # Rotate the Frenet basis vectors accordingly
     aligned_T = np.einsum('ji,ki->kj', rotation_matrix, T)
     aligned_N = np.einsum('ji,ki->kj', rotation_matrix, N)
@@ -321,10 +367,14 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
 
     # Check whether the sense of the axis is in the positive cylindrical angle
     phi = np.unwrap(phi)
-    sense_axis = phi[1] - phi[0]
+    phi0 = phi[0]
+    sense_axis = phi[1] - phi0
 
-    if sense_axis < 0 or sense_axis > np.pi: # Care for potential sudden jump
+    # Correct sense of the axis
+    sgn_change = 1
+    if sense_axis < 0:
         # Change coordinates accordingly
+        sgn_change = -1
         Z = -Z
         phi = -phi
 
@@ -336,8 +386,22 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         aligned_position[:,2] *= -1
         aligned_T[:,2] *= -1
         aligned_N[:,2] *= -1
-        aligned_B[:,2] *= -1   
-    
+        aligned_B[:,2] *= -1  
+
+    # Redefine the cylindrical angle so that the first point is phi = 0 (the cylindrical representation should not change
+    assert np.sign(phi[-1]-phi[0]) > 0
+    scl = 1/(phi[-1]-phi[0])*2*np.pi
+    phi = (phi-phi[0])*scl
+
+    def cylindrical_fun(ell):
+        if isinstance(ell, float):
+            ell = [ell]
+        pos = aligned_position_fun(ell)
+        R_ell, phi_ell, Z_ell = cartesian_to_cylindrical(pos)
+        phi_ell = (phi_ell - phi0) * sgn_change * scl % (2*np.pi)
+        Z_ell *= sgn_change
+        return R_ell, phi_ell, Z_ell
+
     # Need to translate aligned vectors to cylindrical coordinates
     def change_vector_to_cylindrical(phi, vector):
         new_vector = np.zeros(np.shape(vector))
@@ -346,21 +410,79 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         new_vector[:,2] = vector[:,2] 
 
         return new_vector
+    
+    # def aligned_FS_cyl_fun(ell):
+    #     aligned_T, aligned_N, aligned_B = aligned_FS_fun(ell)
+    #     aligned_T[:,1:2] *= sgn_change
+    #     aligned_N[:,1:2] *= sgn_change
+    #     aligned_B[:,1:2] *= sgn_change
 
-    mismatch = [T[-1]-T[0], N[-1]+N[0],[R_ss[1]-R_ss[0], Z_ss[1]-Z_ss[0], phi_ss[1]-phi_ss[0]-2*np.pi/self.nfp], position[-1] - position[0]]
+    #     _, phi_ell,_ = cylindrical_fun(ell)
+    #     aligned_T = change_vector_to_cylindrical(phi_ell, aligned_T)
+    #     aligned_N = change_vector_to_cylindrical(phi_ell, aligned_N)
+    #     aligned_B = change_vector_to_cylindrical(phi_ell, aligned_B)
+    #     return aligned_T, aligned_N, aligned_B
+    
+    # def aligned_curve_cyl_fun(ell):
+    #     aligned_T, aligned_N, aligned_B = aligned_FS_fun(ell)
+    #     aligned_T[:,1:2] *= sgn_change
+    #     aligned_N[:,1:2] *= sgn_change
+    #     aligned_B[:,1:2] *= sgn_change
 
-    if minimal:
-        return mismatch
+    #     R_ell, phi_ell, Z_ell = cylindrical_fun(ell)
+    #     aligned_T = change_vector_to_cylindrical(phi_ell, aligned_T)
+    #     aligned_N = change_vector_to_cylindrical(phi_ell, aligned_N)
+    #     aligned_B = change_vector_to_cylindrical(phi_ell, aligned_B)
+    #     return R_ell, phi_ell, Z_ell, aligned_T, aligned_N, aligned_B
     
     aligned_T = change_vector_to_cylindrical(phi, aligned_T)
     aligned_N = change_vector_to_cylindrical(phi, aligned_N)
     aligned_B = change_vector_to_cylindrical(phi, aligned_B)
 
-    # Redefine the cylindrical angle so that the first point is phi = 0 (the cylindrical representation should not change
-    assert np.sign(phi[-1]-phi[0]) > 0
-    print('Mismatch in phi_cyl: ', phi[-1]-2*np.pi)
-    phi = (phi-phi[0])/(phi[-1]-phi[0])*2*np.pi
+    
+    def find_ell(phi):
+        if isinstance(phi,float):
+            N=1
+            phi = [phi]
+        else:
+            N=len(phi)
+        def res(ell, phi_val):
+            if ell == 0.0:
+                phi_f = 0.0
+            elif phi_val == 2*np.pi:
+                phi_f = 2*np.pi
+            else:
+                _, phi_f,_ = cylindrical_fun(ell)
+            val = phi_f - phi_val
+            return val
+        ell = np.zeros(N)
+        for j_phi, phi_val in enumerate(phi):
+            if phi_val == 0.0:
+                ell[j_phi] = 0.0
+            elif phi_val == 2*np.pi:
+                ell[j_phi] = 2*np.pi
+            else:
+                ell0 = phi_val*self.L_in/(2*np.pi/self.nfp)
+                ell_l = 0 # np.max([0, ell0 - self.L_in/2])
+                ell_r = self.L_in*self.nfp # np.min([ell0 + self.L_in/2, self.L_in*self.nfp])
+                ell[j_phi] = bisect(res, ell_l, ell_r, args = (phi_val,), xtol = 1e-15, rtol=1e-15)
+        
+        return ell
+            
+    def aligned_curve_cyl_fun_phi(phi):
+        ell = find_ell(phi)
 
+        aligned_T, aligned_N, aligned_B = aligned_FS_fun(ell)
+        aligned_T[:,1:2] *= sgn_change
+        aligned_N[:,1:2] *= sgn_change
+        aligned_B[:,1:2] *= sgn_change
+
+        R_ell, phi_ell, Z_ell = cylindrical_fun(ell)
+        aligned_T = change_vector_to_cylindrical(phi_ell, aligned_T)
+        aligned_N = change_vector_to_cylindrical(phi_ell, aligned_N)
+        aligned_B = change_vector_to_cylindrical(phi_ell, aligned_B)
+        return R_ell, ell, Z_ell, aligned_T, aligned_N, aligned_B
+    
     ################
     # SPLINES OF r #
     ################
@@ -390,47 +512,88 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
             sp = make_interp_spline(wrapped_grid, array, k = 7)
         return sp
     
+    # def make_spline(grid, array, periodic = True, half = False):
+    #     if half:
+    #         sign_half = -1
+    #     else:
+    #         sign_half = 1
+    #     if periodic:
+    #         wrapped_grid = grid
+    #         if len(np.shape(array)) > 1:
+    #             sp = []
+    #             if half:
+    #                 for j in range(3):
+    #                     # sp_temp = PchipInterpolator(wrapped_grid, array[j], axis=0, extrapolate=False)
+    #                     sp_temp = make_interp_spline(np.append(wrapped_grid[:-1],wrapped_grid + 2*np.pi), \
+    #                                                  np.append(np.append(array[j,:-1],-array[j,:-1]),array[j,0]), \
+    #                                                  bc_type="periodic", k = 7, axis=0)
+    #                     sp_cyclic = lambda x: sp_temp(x % (2*np.pi))
+    #                     sp.append([sp_cyclic])
+    #             else:
+    #                 for j in range(3):
+    #                     # sp_temp = PchipInterpolator(wrapped_grid, array[j], axis=0, extrapolate=False)
+    #                     sp_temp = make_interp_spline(wrapped_grid, np.append(array[j,:-1],array[j,0]), k = 7, axis=0, bc_type="periodic")
+    #                     sp_cyclic = lambda x: sp_temp(x % (2*np.pi))
+    #                     sp.append([sp_cyclic])
+    #         else:
+    #             if half:
+    #                 # sp_temp = PchipInterpolator(wrapped_grid, array, axis=0, extrapolate=False)
+    #                 sp_temp = make_interp_spline(np.append(wrapped_grid[:-1],wrapped_grid + 2*np.pi), \
+    #                                              np.append(np.append(array[:-1],-array[:-1]),array[0]), \
+    #                                              bc_type = "periodic", k=7, axis=0)
+                    
+    #                 sp = lambda x: sp_temp(x % (2*np.pi))
+    #             else:
+    #                 # sp_temp = PchipInterpolator(wrapped_grid, array, axis=0, extrapolate=False)
+    #                 sp_temp = make_interp_spline(wrapped_grid, np.append(array[:-1],array[0]), k=7, axis=0, bc_type="periodic")
+    #                 sp = lambda x: sp_temp(x % (2*np.pi))
+    #     else:
+    #         wrapped_grid = grid
+    #         # sp = PchipInterpolator(wrapped_grid, array)
+    #         sp = make_interp_spline(wrapped_grid, array, k = 7)
+    #     return sp
+    
     # Periodic spline interpolation for kappa and tau (assume varphi is equally spaced)
     flag_half = self.flag_half
 
-    # Keep the geometric quantities in cylindrical phi
-    self.R0_func = make_spline(phi, R)
-    self.Z0_func = make_spline(phi, Z)
+    # phi_ord = np.linspace(0.0, 1.0, self.nphi*self.nfp+1) * 2*np.pi
+    # R, ell_ord, Z, aligned_T, aligned_N, aligned_B = aligned_curve_cyl_fun_phi(phi_ord)
 
-    if func:
-        kappa = kappa(ell)
-        tau = tau(ell)
-        
-    # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
-    # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in vylindrical phi.
-    self.normal_R_spline = make_spline(phi, aligned_N[:,0], half = flag_half)
-    self.normal_phi_spline = make_spline(phi, aligned_N[:,1], half = flag_half)
-    self.normal_z_spline = make_spline(phi, aligned_N[:,2], half = flag_half)
-    self.binormal_R_spline = make_spline(phi, aligned_B[:,0], half = flag_half)
-    self.binormal_phi_spline = make_spline(phi, aligned_B[:,1], half = flag_half)
-    self.binormal_z_spline = make_spline(phi, aligned_B[:,2], half = flag_half)
-    self.tangent_R_spline = make_spline(phi, aligned_T[:,0])
-    self.tangent_phi_spline = make_spline(phi, aligned_T[:,1])
-    self.tangent_z_spline = make_spline(phi, aligned_T[:,2])
+    def save_splines_FS(phi_grid, ell_grid, kappa = kappa, tau = tau):
+        # Keep the geometric quantities in cylindrical phi
+        self.R0_func = make_spline(phi_grid, R)
+        self.Z0_func = make_spline(phi_grid, Z)
 
-    # print('*')
-    # import matplotlib.pyplot as plt
-    # phi_ext = np.linspace(-1,1,10000)*2*np.pi
-    # plt.plot(phi_ext, self.normal_R_spline(phi_ext))
-    # plt.plot(phi_ext, self.normal_phi_spline(phi_ext))
-    # plt.plot(phi_ext, self.normal_z_spline(phi_ext))
-    # plt.show()
+        if func:
+            kappa = kappa(ell_grid)
+            tau = tau(ell_grid)
+            
+        # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
+        # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in vylindrical phi.
+        self.normal_R_spline = make_spline(phi_grid, aligned_N[:,0], half = flag_half)
+        self.normal_phi_spline = make_spline(phi_grid, aligned_N[:,1], half = flag_half)
+        self.normal_z_spline = make_spline(phi_grid, aligned_N[:,2], half = flag_half)
+        self.binormal_R_spline = make_spline(phi_grid, aligned_B[:,0], half = flag_half)
+        self.binormal_phi_spline = make_spline(phi_grid, aligned_B[:,1], half = flag_half)
+        self.binormal_z_spline = make_spline(phi_grid, aligned_B[:,2], half = flag_half)
+        self.tangent_R_spline = make_spline(phi_grid, aligned_T[:,0])
+        self.tangent_phi_spline = make_spline(phi_grid, aligned_T[:,1])
+        self.tangent_z_spline = make_spline(phi_grid, aligned_T[:,2])
+
+    # save_splines_FS(phi_ord, ell_ord)
+    save_splines_FS(phi, ell) # If not used this regular grid for phi for interpolation, then use this
 
     ##############################
     # EVALUATE ON A REGULAR GRID #
     ##############################
     # Do nothing to the curvature and torsion: these are assumed to be given in varphi grid
     # Evaluate phi
-    nu_func = make_spline(varphi, varphi - phi, periodic = True)
+    nu_tot = varphi - phi # smooth_fourier(varphi - phi, self.nfp, 15, varphi, even = False)
+    nu_func = make_spline(varphi, nu_tot, periodic = True)
     self.nu = nu_func(varphi_in)
     phi_out = varphi_in - self.nu
     self.phi = phi_out
-    self.nu_spline = make_spline(phi, varphi - phi, periodic = True)
+    self.nu_spline = make_spline(phi, nu_tot, periodic = True)
 
     # Evaluate geometry
     self.R0 = self.R0_func(phi_out)
@@ -441,6 +604,10 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     self.normal_cylindrical[:,0] = self.normal_R_spline(phi_out)
     self.normal_cylindrical[:,1] = self.normal_phi_spline(phi_out)
     self.normal_cylindrical[:,2] = self.normal_z_spline(phi_out)
+
+    # plt.plot(phi_out, self.normal_z_spline(phi_out))
+    # plt.plot(phi_out, aligned_N[:,2])
+    # plt.show()
 
     self.binormal_cylindrical = np.zeros((nphi, 3))
     self.binormal_cylindrical[:,0] = self.binormal_R_spline(phi_out)
@@ -522,6 +689,25 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
 
     return mismatch
 
+# if minimal:
+#     return mismatch
+# point = 2*np.pi/self.nfp
+# mismatch = [[self.normal_R_spline(point)+self.normal_R_spline(0), \
+#              self.normal_phi_spline(point)+self.normal_phi_spline(0), \
+#              self.normal_z_spline(point)+self.normal_z_spline(0)], \
+#              [self.tangent_R_spline(point)-self.tangent_R_spline(0), \
+#              self.tangent_phi_spline(point)-self.tangent_phi_spline(0), \
+#              self.tangent_z_spline(point)-self.tangent_z_spline(0)], \
+#              [R_ss[1]-R_ss[0], Z_ss[1]-Z_ss[0], phi_ss[1]-phi_ss[0]-2*np.pi/self.nfp], \
+#              position[-1] - position[0]]
+# print('*')
+# import matplotlib.pyplot as plt
+# phi_ext = np.linspace(-1,1,10000)*2*np.pi
+# plt.plot(phi_ext, self.normal_R_spline(phi_ext))
+# plt.plot(phi_ext, self.normal_phi_spline(phi_ext))
+# plt.plot(phi_ext, self.normal_z_spline(phi_ext))
+# plt.show()
+
 def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
     """
     This function takes two 1D arrays (R0 and Z0), which contain
@@ -557,7 +743,7 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
     factor = 2 / (2*np.pi/nfp)
     phi_ext = np.append(phi_conversion, phi_conversion[0] + 2*np.pi/nfp)
     R0_ext = np.append(R0, R0[0])
-    Z0_ext = np.append(Z0, Z0[0])
+    Z0_ext = np.append(Z0, -Z0[0])
 
     for n in range(1, ntor+1):
         # The angle with positive sign (when using it for VMEC will need sign)

@@ -153,19 +153,18 @@ def Frenet_to_cylindrical(self, r, ntheta=20):
             # If half helicity axes are considered, we need to use the extended domain : 
             # within the 2*pi domain of the axis everything is smooth (as is the signed frame)
             # but not across phi = 0
-            # NOTE : it has a weird blip on the leftmost point
             X_spline = self.convert_to_spline(X_at_this_theta, half_period = self.flag_half)
             Y_spline = self.convert_to_spline(Y_at_this_theta, half_period = self.flag_half)
             Z_spline = self.convert_to_spline(Z_at_this_theta)
             # print('*')
             # import matplotlib.pyplot as plt
-            # phi_ext = np.linspace(-1,2,1000)*2*np.pi
-            # plt.plot(phi_ext, X_spline(phi_ext)*self.normal_R_spline(phi_ext))
-            # plt.plot(phi_ext, X_spline(phi_ext)*self.normal_phi_spline(phi_ext))
-            # plt.plot(phi_ext, X_spline(phi_ext)*self.normal_z_spline(phi_ext))
+            # phi_ext = np.linspace(-1,1,10000)*np.pi
+            # plt.plot(phi_ext, Z_spline(phi_ext)*self.tangent_R_spline(phi_ext))
+            # plt.plot(phi_ext, Z_spline(phi_ext)*self.tangent_phi_spline(phi_ext))
+            # plt.plot(phi_ext, Z_spline(phi_ext)*self.tangent_z_spline(phi_ext))
             # plt.show()
             for j_phi in range(nphi_conversion):
-                # Solve for the phi0 such that r0 + X1 n + Y1 b has the desired phi
+                # Solve for the phi0 such that r0 + X n + Y b has the desired phi
                 phi_target = phi_conversion[j_phi]
                 phi0_rootSolve_min = phi_target - 1.0 / self.nfp
                 phi0_rootSolve_max = phi_target + 1.0 / self.nfp

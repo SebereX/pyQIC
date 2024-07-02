@@ -7,7 +7,7 @@ import logging
 import numpy as np
 from scipy.interpolate import CubicSpline as spline
 from scipy.interpolate import BSpline, make_interp_spline, PchipInterpolator
-from .spectral_diff_matrix import spectral_diff_matrix, finite_difference_matrix, construct_periodic_diff_matrix
+from .spectral_diff_matrix import spectral_diff_matrix, finite_difference_matrix, construct_periodic_diff_matrix, construct_ext_periodic_diff_matrix
 from .util import fourier_minimum
 from .input_structure import evaluate_input_on_grid
 from .fourier_interpolation import fourier_interpolation_matrix, make_interp_fourier
@@ -29,7 +29,9 @@ def convert_to_spline(self,array, half_period = False, varphi = False):
         if half_period:
             phi_ext = np.concatenate(tuple(domain + 2*np.pi/self.nfp*j for j in range(self.nfp)))
             temp = np.concatenate(tuple(array*(-1)**j for j in range(self.nfp)))
-            sp = PchipInterpolator(phi_ext, temp, axis=0, extrapolate='periodic')
+            sp_temp = make_interp_spline(phi_ext, temp, k=7, axis=0)
+            sp = lambda x: sp_temp(x % (2*np.pi))
+            # sp = PchipInterpolator(phi_ext, temp, axis=0, extrapolate='periodic')
         else:
             sp=spline(np.append(domain,2*np.pi/self.nfp+domain[0]), np.append(array,array[0]), bc_type='periodic')
     return sp
@@ -73,6 +75,7 @@ def init_axis(self, omn_complete = True):
         
         # Derivative and interpolation
         self.diff_order, self.d_d_varphi = construct_periodic_diff_matrix(self.diff_finite, self.nphi, self.nfp)
+        _, self.d_d_varphi_ext = construct_ext_periodic_diff_matrix(self.diff_finite, self.nphi, self.nfp, D_mat = self.d_d_varphi)
         
         # It is also convenient to define interpolation to phi = 0. The grid is not shifted, could simply evaluate at 0
         # self.interpolateTo0 = fourier_interpolation_matrix(self.nphi, 0)
@@ -90,7 +93,7 @@ def init_axis(self, omn_complete = True):
         _ = invert_frenet_axis(self, self.curvature, self.torsion, self.ell, self.varphi, full_axis = True, func = flag_func, flip = flag_half)
         
         # Obtain axis description as Fourier components : important for output to VMEC (at least approximately)
-        ntor = 10
+        ntor = 15
         rc, rs, zc, zs = to_Fourier_axis(self.R0, self.Z0, self.nfp, ntor = ntor, lasym = True, phi_in = self.phi)
         self.Raxis = {"type": "fourier", "input_value": {}}
         self.Zaxis = {"type": "fourier", "input_value": {}}
@@ -152,9 +155,9 @@ def init_axis(self, omn_complete = True):
         self.B0 = B0; self.Bbar = Bbar
         self.G0 = G0; self.abs_G0_over_B0 = abs_G0_over_B0
         self.d_l_d_phi = d_l_d_phi; self.d2_l_d_phi2 = d2_l_d_phi2; self.d3_l_d_phi3 = d3_l_d_phi3; self.d_l_d_varphi = d_l_d_varphi
-        self.d_curvature_d_varphi = np.matmul(self.d_d_varphi, self.curvature); self.d_torsion_d_varphi = np.matmul(self.d_d_varphi, self.torsion)
+        self.d_curvature_d_varphi = np.matmul(self.d_d_varphi_ext, self.curvature); self.d_torsion_d_varphi = np.matmul(self.d_d_varphi, self.torsion)
         self.d_curvature_d_varphi_at_0 = self.d_curvature_d_varphi[0]
-        self.d_d_d_varphi_at_0 = np.matmul(self.d_d_varphi, self.d)[0]
+        self.d_d_d_varphi_at_0 = np.matmul(self.d_d_varphi_ext, self.d)[0]
 
     else: 
         self.reg_grid = 'phi'

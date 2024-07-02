@@ -120,3 +120,19 @@ def construct_periodic_diff_matrix(diff_finite, nphi, nfp):
         diff_order = None
         
     return diff_order, d_d_phi 
+
+def construct_ext_periodic_diff_matrix(diff_finite, nphi, nfp, D_mat = None):
+    if diff_finite:
+        diff_order = diff_finite
+        if isinstance(D_mat, np.ndarray):
+            d_d_phi_copy = D_mat.copy()
+        else:
+            diff_order, d_d_phi_copy = construct_periodic_diff_matrix(diff_finite, nphi, nfp)
+        d_d_phi_copy[:diff_order,-diff_order:] = -d_d_phi_copy[:diff_order,-diff_order:]
+        d_d_phi_copy[-diff_order:,:diff_order] = -d_d_phi_copy[-diff_order:,:diff_order]
+        d_d_phi = d_d_phi_copy
+    else:
+        d_d_phi = spectral_diff_matrix_extended(nphi, xmin = 0, xmax = 2*np.pi/nfp)
+        diff_order = None
+        
+    return diff_order, d_d_phi 
