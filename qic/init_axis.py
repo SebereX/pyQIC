@@ -11,7 +11,7 @@ from .spectral_diff_matrix import spectral_diff_matrix, finite_difference_matrix
 from .util import fourier_minimum
 from .input_structure import evaluate_input_on_grid
 from .fourier_interpolation import fourier_interpolation_matrix, make_interp_fourier
-from .reverse_frenet_serret_old import invert_frenet_axis, to_Fourier_axis
+from .reverse_frenet_serret import invert_frenet_axis, to_Fourier_axis
 
 #logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
