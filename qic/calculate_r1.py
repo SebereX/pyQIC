@@ -418,12 +418,12 @@ def r1_diagnostics(self):
     ################
     if self.omn:
         # Make spline for d (in phi)
-        self.d_spline = self.convert_to_spline(self.d)
+        self.d_spline = self.convert_to_spline(self.d, varphi = False, half_period = self.flag_half)
         # self.alpha_tilde = self.alpha # -self.N_helicity*self.varphi
 
         # Cos/sin of alpha (defined respect to θ)
-        self.cos_alpha_spline = self.convert_to_spline(np.cos(self.alpha))
-        self.sin_alpha_spline = self.convert_to_spline(np.sin(self.alpha))
+        self.cos_alpha_spline = self.convert_to_spline(np.cos(self.alpha), varphi = False, half_period = self.flag_half)
+        self.sin_alpha_spline = self.convert_to_spline(np.sin(self.alpha), varphi = False, half_period = self.flag_half)
 
         # Define angle as: θ - α = χ - (α - Νφ) = χ - angle <- angle is actually periodic
         angle = self.alpha - (-self.helicity * self.nfp * self.varphi)
@@ -454,8 +454,8 @@ def r1_diagnostics(self):
         self.B1s = 0.0 * self.B0
 
     # Make splines for B1 : if float, it also works 
-    self.B1c_spline = self.convert_to_spline(self.B1c)
-    self.B1s_spline = self.convert_to_spline(self.B1s)
+    self.B1c_spline = self.convert_to_spline(self.B1c, varphi = False, half_period = self.flag_half)
+    self.B1s_spline = self.convert_to_spline(self.B1s, varphi = False, half_period = self.flag_half)
 
     ################
     # CONSTRUCT X1 #

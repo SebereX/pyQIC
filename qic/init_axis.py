@@ -11,30 +11,10 @@ from .spectral_diff_matrix import spectral_diff_matrix, finite_difference_matrix
 from .util import fourier_minimum
 from .input_structure import evaluate_input_on_grid
 from .fourier_interpolation import fourier_interpolation_matrix, make_interp_fourier
-from .reverse_frenet_serret import invert_frenet_axis, to_Fourier_axis
+from .reverse_frenet_serret_old import invert_frenet_axis, to_Fourier_axis
 
 #logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-# Define periodic spline interpolant conversion used in several scripts and plotting
-def convert_to_spline(self,array, half_period = False, varphi = False):
-    # def sp(x):
-    #     fun = make_interp_fourier(array)
-    #     return fun(x, self.phi[0], self.nfp)
-    domain = self.varphi if varphi else self.phi
-
-    if isinstance(array, float):
-        sp=spline(np.append(domain,2*np.pi/self.nfp+domain[0]), np.ones(self.nphi + 1)*array, bc_type='periodic')
-    else:
-        if half_period:
-            phi_ext = np.concatenate(tuple(domain + 2*np.pi/self.nfp*j for j in range(self.nfp)))
-            temp = np.concatenate(tuple(array*(-1)**j for j in range(self.nfp)))
-            sp_temp = make_interp_spline(phi_ext, temp, k=7, axis=0)
-            sp = lambda x: sp_temp(x % (2*np.pi))
-            # sp = PchipInterpolator(phi_ext, temp, axis=0, extrapolate='periodic')
-        else:
-            sp=spline(np.append(domain,2*np.pi/self.nfp+domain[0]), np.append(array,array[0]), bc_type='periodic')
-    return sp
 
 def self_consistent_ell_from_varphi(self):
     # Picard iteration is used to find varphi and G0
@@ -117,7 +97,7 @@ def init_axis(self, omn_complete = True):
 
         # Final value for B0
         Bbar = self.spsi * np.mean(B0)
-        self.B0_spline = self.convert_to_spline(B0) # splines are in phi
+        self.B0_spline = self.convert_to_spline(B0, varphi = False) # splines are in phi
 
         # Final value for G0
         G0 = self.sG*abs_G0
@@ -148,6 +128,7 @@ def init_axis(self, omn_complete = True):
         ## Given helicity ##
         self.helicity = self.helicity_in
         self.N_helicity = - self.helicity * self.nfp
+        self.flag_half = (np.mod(self.helicity, 1) == 0.5) # If half helicity, to take into account the flip of sign
 
         # # How to handle stellarator symmetry? For now assume ss
         # self.lasym = False
@@ -242,8 +223,8 @@ def init_axis(self, omn_complete = True):
                     R0ppp += rc[jn] * (n * n * n * sinangle) + rs[jn] * (-n * n * n * cosangle)
                     Z0ppp += zc[jn] * (n * n * n * sinangle) + zs[jn] * (-n * n * n * cosangle)
 
-                self.R0_func = self.convert_to_spline(R0)
-                self.Z0_func = self.convert_to_spline(Z0)
+                # self.R0_func = self.convert_to_spline(R0, varphi = False)
+                # self.Z0_func = self.convert_to_spline(Z0, varphi = False)
 
             elif Raxis["type"] == 'grid':
                 # Read inputs as values on phi grid
@@ -251,8 +232,8 @@ def init_axis(self, omn_complete = True):
                 Z0 = Raxis["input_value"]
                 
                 # Check whether axis is symmetric
-                self.R0_func = self.convert_to_spline(R0)
-                self.Z0_func = self.convert_to_spline(Z0)
+                # self.R0_func = self.convert_to_spline(R0, varphi = False)
+                # self.Z0_func = self.convert_to_spline(Z0, varphi = False)
                 self.lasym_axis = np.max(np.max(self.R0_func(phi)-self.R0_func(-phi)))/np.std(R0)>1e-3 or \
                                   np.max(np.max(self.Z0_func(phi)+self.Z0_func(-phi)))/np.std(Z0)>1e-3
 
@@ -416,7 +397,7 @@ def init_axis(self, omn_complete = True):
             self.varphi = np.zeros(nphi)
 
             # Define d_l_d_phi on the unshifted grid  (recall that for QS the grid is not shifted)
-            d_l_d_phi_spline = self.convert_to_spline(d_l_d_phi)
+            d_l_d_phi_spline = self.convert_to_spline(d_l_d_phi, varphi = False)
             d_l_d_phi_from_zero = d_l_d_phi_spline(phi + d_phi / 4.0)
             for j in range(1, nphi):
                 # To get toroidal angle on the full mesh, we need d_l_d_phi on the half mesh.
@@ -531,25 +512,24 @@ def init_axis(self, omn_complete = True):
         #     self.lasym = self.lasym_axis or np.abs(self.sigma0)>0 or np.any(np.array(self.B2c_svals) > 0.0) or np.any(np.array(self.B2c_svals) < 0.0)
 
         # Functions that converts a toroidal angle phi0 on the axis to the axis radial and vertical coordinates
-        self.R0_func = self.convert_to_spline(R0)
-        self.Z0_func = self.convert_to_spline(Z0)
+        self.R0_func = self.convert_to_spline(R0, varphi = False)
+        self.Z0_func = self.convert_to_spline(Z0, varphi = False)
 
         # Spline interpolants for the cylindrical components of the Frenet-Serret frame:
-        self.normal_R_spline     = self.convert_to_spline(self.normal_cylindrical[:,0])
-        self.normal_phi_spline   = self.convert_to_spline(self.normal_cylindrical[:,1])
-        self.normal_z_spline     = self.convert_to_spline(self.normal_cylindrical[:,2])
-        self.binormal_R_spline   = self.convert_to_spline(self.binormal_cylindrical[:,0])
-        self.binormal_phi_spline = self.convert_to_spline(self.binormal_cylindrical[:,1])
-        self.binormal_z_spline = self.convert_to_spline(self.binormal_cylindrical[:,2])
-        self.tangent_R_spline = self.convert_to_spline(self.tangent_cylindrical[:,0])
-        self.tangent_phi_spline = self.convert_to_spline(self.tangent_cylindrical[:,1])
-        self.tangent_z_spline = self.convert_to_spline(self.tangent_cylindrical[:,2])
+        self.normal_R_spline     = self.convert_to_spline(self.normal_cylindrical[:,0], varphi = False, half_period = self.flag_half)
+        self.normal_phi_spline   = self.convert_to_spline(self.normal_cylindrical[:,1], varphi = False, half_period = self.flag_half)
+        self.normal_z_spline     = self.convert_to_spline(self.normal_cylindrical[:,2], varphi = False, half_period = self.flag_half)
+        self.binormal_R_spline   = self.convert_to_spline(self.binormal_cylindrical[:,0], varphi = False, half_period = self.flag_half)
+        self.binormal_phi_spline = self.convert_to_spline(self.binormal_cylindrical[:,1], varphi = False, half_period = self.flag_half)
+        self.binormal_z_spline = self.convert_to_spline(self.binormal_cylindrical[:,2], varphi = False, half_period = self.flag_half)
+        self.tangent_R_spline = self.convert_to_spline(self.tangent_cylindrical[:,0], varphi = False)
+        self.tangent_phi_spline = self.convert_to_spline(self.tangent_cylindrical[:,1], varphi = False)
+        self.tangent_z_spline = self.convert_to_spline(self.tangent_cylindrical[:,2], varphi = False)
 
         # Spline interpolant for the magnetic field on-axis as a function of phi (not varphi)
-        self.B0_spline = self.convert_to_spline(self.B0)
+        self.B0_spline = self.convert_to_spline(self.B0, varphi = False)
 
         # Spline interpolant for nu = varphi-phi
         nu = self.varphi-self.phi
-        self.nu_spline = self.convert_to_spline(nu)
-        self.nu_spline_of_varphi = spline(np.append(self.varphi,self.varphi[0]+2*np.pi/self.nfp), \
-                                            np.append(self.varphi-self.phi,self.varphi[0]-self.phi[0]), bc_type='periodic')
+        self.nu_spline = self.convert_to_spline(nu, varphi = False)
+        self.nu_spline_of_varphi = self.convert_to_spline(nu, varphi = True)

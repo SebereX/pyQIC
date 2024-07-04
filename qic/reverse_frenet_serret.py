@@ -11,6 +11,7 @@ from scipy.integrate import solve_ivp, cumulative_trapezoid, quad
 from scipy.interpolate import PchipInterpolator, make_interp_spline
 from sklearn.decomposition import PCA
 from scipy.spatial.transform import Rotation as R
+# from .util_interp import convert_to_spline
 
 logger = logging.getLogger(__name__)
 
@@ -311,18 +312,10 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     N = N_fun(ell)
     B = B_fun(ell)
     position = position_fun(ell)
-
-    # # For Newton solve trials
-    # self.fs_solve = np.concatenate((T[:-1,0],T[:-1,1],T[:-1,2],N[:-1,0],N[:-1,1],N[:-1,2],B[:-1,0],B[:-1,1],B[:-1,2]))
-    # self.curvature_ext = kappa(ell[:-1])
-    # self.torsion_ext = tau(ell[:-1])
     
     #####################
     # CHOOSE THE Z AXIS #
     #####################
-    # # Align the curve to minimize Z excursion : numerical
-    # aligned_position, _, rotation_matrix = align_with_min_z_excursion(position)
-
     # Find set of SS points
     set1, _ = find_ss_points(self, T_fun, position_fun=position_fun)
 
@@ -333,6 +326,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     def aligned_position_fun(ell):
         position = position_fun(ell)
         return np.dot(position - center, rotation_matrix.T)
+    
     def aligned_FS_fun(ell):
         if isinstance(ell, float):
             ell = [ell]
@@ -393,15 +387,6 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     scl = 1/(phi[-1]-phi[0])*2*np.pi
     phi = (phi-phi[0])*scl
 
-    def cylindrical_fun(ell):
-        if isinstance(ell, float):
-            ell = [ell]
-        pos = aligned_position_fun(ell)
-        R_ell, phi_ell, Z_ell = cartesian_to_cylindrical(pos)
-        phi_ell = (phi_ell - phi0) * sgn_change * scl % (2*np.pi)
-        Z_ell *= sgn_change
-        return R_ell, phi_ell, Z_ell
-
     # Need to translate aligned vectors to cylindrical coordinates
     def change_vector_to_cylindrical(phi, vector):
         new_vector = np.zeros(np.shape(vector))
@@ -410,159 +395,22 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         new_vector[:,2] = vector[:,2] 
 
         return new_vector
-    
-    # def aligned_FS_cyl_fun(ell):
-    #     aligned_T, aligned_N, aligned_B = aligned_FS_fun(ell)
-    #     aligned_T[:,1:2] *= sgn_change
-    #     aligned_N[:,1:2] *= sgn_change
-    #     aligned_B[:,1:2] *= sgn_change
-
-    #     _, phi_ell,_ = cylindrical_fun(ell)
-    #     aligned_T = change_vector_to_cylindrical(phi_ell, aligned_T)
-    #     aligned_N = change_vector_to_cylindrical(phi_ell, aligned_N)
-    #     aligned_B = change_vector_to_cylindrical(phi_ell, aligned_B)
-    #     return aligned_T, aligned_N, aligned_B
-    
-    # def aligned_curve_cyl_fun(ell):
-    #     aligned_T, aligned_N, aligned_B = aligned_FS_fun(ell)
-    #     aligned_T[:,1:2] *= sgn_change
-    #     aligned_N[:,1:2] *= sgn_change
-    #     aligned_B[:,1:2] *= sgn_change
-
-    #     R_ell, phi_ell, Z_ell = cylindrical_fun(ell)
-    #     aligned_T = change_vector_to_cylindrical(phi_ell, aligned_T)
-    #     aligned_N = change_vector_to_cylindrical(phi_ell, aligned_N)
-    #     aligned_B = change_vector_to_cylindrical(phi_ell, aligned_B)
-    #     return R_ell, phi_ell, Z_ell, aligned_T, aligned_N, aligned_B
-    
+        
     aligned_T = change_vector_to_cylindrical(phi, aligned_T)
     aligned_N = change_vector_to_cylindrical(phi, aligned_N)
     aligned_B = change_vector_to_cylindrical(phi, aligned_B)
-
-    
-    def find_ell(phi):
-        if isinstance(phi,float):
-            N=1
-            phi = [phi]
-        else:
-            N=len(phi)
-        def res(ell, phi_val):
-            if ell == 0.0:
-                phi_f = 0.0
-            elif phi_val == 2*np.pi:
-                phi_f = 2*np.pi
-            else:
-                _, phi_f,_ = cylindrical_fun(ell)
-            val = phi_f - phi_val
-            return val
-        ell = np.zeros(N)
-        for j_phi, phi_val in enumerate(phi):
-            if phi_val == 0.0:
-                ell[j_phi] = 0.0
-            elif phi_val == 2*np.pi:
-                ell[j_phi] = 2*np.pi
-            else:
-                ell0 = phi_val*self.L_in/(2*np.pi/self.nfp)
-                ell_l = 0 # np.max([0, ell0 - self.L_in/2])
-                ell_r = self.L_in*self.nfp # np.min([ell0 + self.L_in/2, self.L_in*self.nfp])
-                ell[j_phi] = bisect(res, ell_l, ell_r, args = (phi_val,), xtol = 1e-15, rtol=1e-15)
-        
-        return ell
-            
-    def aligned_curve_cyl_fun_phi(phi):
-        ell = find_ell(phi)
-
-        aligned_T, aligned_N, aligned_B = aligned_FS_fun(ell)
-        aligned_T[:,1:2] *= sgn_change
-        aligned_N[:,1:2] *= sgn_change
-        aligned_B[:,1:2] *= sgn_change
-
-        R_ell, phi_ell, Z_ell = cylindrical_fun(ell)
-        aligned_T = change_vector_to_cylindrical(phi_ell, aligned_T)
-        aligned_N = change_vector_to_cylindrical(phi_ell, aligned_N)
-        aligned_B = change_vector_to_cylindrical(phi_ell, aligned_B)
-        return R_ell, ell, Z_ell, aligned_T, aligned_N, aligned_B
     
     ################
     # SPLINES OF r #
     ################
-    # Function to make splines
-    def make_spline(grid, array, periodic = True, half = False):
-        if half:
-            sign_half = -1
-        else:
-            sign_half = 1
-        if periodic:
-            wrapped_grid = grid
-            # ind_wrap = np.argsort(wrapped_grid)
-            if len(np.shape(array)) > 1:
-                sp = []
-                for j in range(3):
-                    # sp_temp = PchipInterpolator(wrapped_grid, array[j], axis=0, extrapolate=False)
-                    sp_temp = make_interp_spline(wrapped_grid, array[j], k = 7, axis=0)
-                    sp_cyclic = lambda x: sp_temp(x % (2*np.pi))
-                    sp.append([sp_cyclic])
-            else:
-                # sp_temp = PchipInterpolator(wrapped_grid, array, axis=0, extrapolate=False)
-                sp_temp = make_interp_spline(wrapped_grid, array, k=7, axis=0)
-                sp = lambda x: sp_temp(x % (2*np.pi))
-        else:
-            wrapped_grid = grid
-            # sp = PchipInterpolator(wrapped_grid, array)
-            sp = make_interp_spline(wrapped_grid, array, k = 7)
-        return sp
-    
-    # def make_spline(grid, array, periodic = True, half = False):
-    #     if half:
-    #         sign_half = -1
-    #     else:
-    #         sign_half = 1
-    #     if periodic:
-    #         wrapped_grid = grid
-    #         if len(np.shape(array)) > 1:
-    #             sp = []
-    #             if half:
-    #                 for j in range(3):
-    #                     # sp_temp = PchipInterpolator(wrapped_grid, array[j], axis=0, extrapolate=False)
-    #                     sp_temp = make_interp_spline(np.append(wrapped_grid[:-1],wrapped_grid + 2*np.pi), \
-    #                                                  np.append(np.append(array[j,:-1],-array[j,:-1]),array[j,0]), \
-    #                                                  bc_type="periodic", k = 7, axis=0)
-    #                     sp_cyclic = lambda x: sp_temp(x % (2*np.pi))
-    #                     sp.append([sp_cyclic])
-    #             else:
-    #                 for j in range(3):
-    #                     # sp_temp = PchipInterpolator(wrapped_grid, array[j], axis=0, extrapolate=False)
-    #                     sp_temp = make_interp_spline(wrapped_grid, np.append(array[j,:-1],array[j,0]), k = 7, axis=0, bc_type="periodic")
-    #                     sp_cyclic = lambda x: sp_temp(x % (2*np.pi))
-    #                     sp.append([sp_cyclic])
-    #         else:
-    #             if half:
-    #                 # sp_temp = PchipInterpolator(wrapped_grid, array, axis=0, extrapolate=False)
-    #                 sp_temp = make_interp_spline(np.append(wrapped_grid[:-1],wrapped_grid + 2*np.pi), \
-    #                                              np.append(np.append(array[:-1],-array[:-1]),array[0]), \
-    #                                              bc_type = "periodic", k=7, axis=0)
-                    
-    #                 sp = lambda x: sp_temp(x % (2*np.pi))
-    #             else:
-    #                 # sp_temp = PchipInterpolator(wrapped_grid, array, axis=0, extrapolate=False)
-    #                 sp_temp = make_interp_spline(wrapped_grid, np.append(array[:-1],array[0]), k=7, axis=0, bc_type="periodic")
-    #                 sp = lambda x: sp_temp(x % (2*np.pi))
-    #     else:
-    #         wrapped_grid = grid
-    #         # sp = PchipInterpolator(wrapped_grid, array)
-    #         sp = make_interp_spline(wrapped_grid, array, k = 7)
-    #     return sp
     
     # Periodic spline interpolation for kappa and tau (assume varphi is equally spaced)
     flag_half = self.flag_half
 
-    # phi_ord = np.linspace(0.0, 1.0, self.nphi*self.nfp+1) * 2*np.pi
-    # R, ell_ord, Z, aligned_T, aligned_N, aligned_B = aligned_curve_cyl_fun_phi(phi_ord)
-
     def save_splines_FS(phi_grid, ell_grid, kappa = kappa, tau = tau):
         # Keep the geometric quantities in cylindrical phi
-        self.R0_func = make_spline(phi_grid, R)
-        self.Z0_func = make_spline(phi_grid, Z)
+        self.R0_func = self.convert_to_spline(R, grid = phi_grid)
+        self.Z0_func = self.convert_to_spline(Z, grid = phi_grid)
 
         if func:
             kappa = kappa(ell_grid)
@@ -570,30 +418,33 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
             
         # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
         # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in vylindrical phi.
-        self.normal_R_spline = make_spline(phi_grid, aligned_N[:,0], half = flag_half)
-        self.normal_phi_spline = make_spline(phi_grid, aligned_N[:,1], half = flag_half)
-        self.normal_z_spline = make_spline(phi_grid, aligned_N[:,2], half = flag_half)
-        self.binormal_R_spline = make_spline(phi_grid, aligned_B[:,0], half = flag_half)
-        self.binormal_phi_spline = make_spline(phi_grid, aligned_B[:,1], half = flag_half)
-        self.binormal_z_spline = make_spline(phi_grid, aligned_B[:,2], half = flag_half)
-        self.tangent_R_spline = make_spline(phi_grid, aligned_T[:,0])
-        self.tangent_phi_spline = make_spline(phi_grid, aligned_T[:,1])
-        self.tangent_z_spline = make_spline(phi_grid, aligned_T[:,2])
+        self.normal_R_spline = self.convert_to_spline(aligned_N[:,0], grid = phi_grid, half_period = flag_half)
+        self.normal_phi_spline = self.convert_to_spline(aligned_N[:,1], grid = phi_grid, half_period = flag_half)
+        self.normal_z_spline = self.convert_to_spline(aligned_N[:,2], grid = phi_grid, half_period = flag_half)
+        self.binormal_R_spline = self.convert_to_spline(aligned_B[:,0], grid = phi_grid, half_period = flag_half)
+        self.binormal_phi_spline = self.convert_to_spline(aligned_B[:,1], grid = phi_grid, half_period = flag_half)
+        self.binormal_z_spline = self.convert_to_spline(aligned_B[:,2], grid = phi_grid, half_period = flag_half)
+        self.tangent_R_spline = self.convert_to_spline(aligned_T[:,0], grid = phi_grid)
+        self.tangent_phi_spline = self.convert_to_spline(aligned_T[:,1], grid = phi_grid)
+        self.tangent_z_spline = self.convert_to_spline(aligned_T[:,2], grid = phi_grid)
 
-    # save_splines_FS(phi_ord, ell_ord)
-    save_splines_FS(phi, ell) # If not used this regular grid for phi for interpolation, then use this
+    save_splines_FS(phi, ell)
 
+    smooth_frame = True
+    if smooth_frame:
+        smooth_FS_splines(self)
+        
     ##############################
     # EVALUATE ON A REGULAR GRID #
     ##############################
     # Do nothing to the curvature and torsion: these are assumed to be given in varphi grid
     # Evaluate phi
-    nu_tot = varphi - phi # smooth_fourier(varphi - phi, self.nfp, 15, varphi, even = False)
-    nu_func = make_spline(varphi, nu_tot, periodic = True)
+    nu_tot = varphi - phi if not smooth_frame else smooth_fourier(varphi - phi, self.nfp, 15, varphi, even = False) # 
+    nu_func = self.convert_to_spline(nu_tot, grid = varphi, periodic = True)
     self.nu = nu_func(varphi_in)
     phi_out = varphi_in - self.nu
     self.phi = phi_out
-    self.nu_spline = make_spline(phi, nu_tot, periodic = True)
+    self.nu_spline = self.convert_to_spline(nu_tot, grid = phi, periodic = True)
 
     # Evaluate geometry
     self.R0 = self.R0_func(phi_out)
@@ -689,24 +540,96 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
 
     return mismatch
 
-# if minimal:
-#     return mismatch
-# point = 2*np.pi/self.nfp
-# mismatch = [[self.normal_R_spline(point)+self.normal_R_spline(0), \
-#              self.normal_phi_spline(point)+self.normal_phi_spline(0), \
-#              self.normal_z_spline(point)+self.normal_z_spline(0)], \
-#              [self.tangent_R_spline(point)-self.tangent_R_spline(0), \
-#              self.tangent_phi_spline(point)-self.tangent_phi_spline(0), \
-#              self.tangent_z_spline(point)-self.tangent_z_spline(0)], \
-#              [R_ss[1]-R_ss[0], Z_ss[1]-Z_ss[0], phi_ss[1]-phi_ss[0]-2*np.pi/self.nfp], \
-#              position[-1] - position[0]]
-# print('*')
-# import matplotlib.pyplot as plt
-# phi_ext = np.linspace(-1,1,10000)*2*np.pi
-# plt.plot(phi_ext, self.normal_R_spline(phi_ext))
-# plt.plot(phi_ext, self.normal_phi_spline(phi_ext))
-# plt.plot(phi_ext, self.normal_z_spline(phi_ext))
-# plt.show()
+def smooth_FS_splines(stel):
+    ##############
+    # SMOOTH R/Z #
+    ##############
+    nfp = stel.nfp
+    ntor = 15
+    phi_reg = np.linspace(0, 1.0, stel.nphi) * 2*np.pi/stel.nfp
+    rc, rs, zc, zs = to_Fourier_axis(stel.R0_func(phi_reg), stel.Z0_func(phi_reg), nfp, ntor = ntor, lasym = True, phi_in = phi_reg)
+    R0_temp = np.zeros(stel.nphi)
+    Z0_temp = np.zeros(stel.nphi)
+    for jn in range(ntor+1):
+        n = jn * nfp
+        sinangle = np.sin(n * phi_reg)
+        cosangle = np.cos(n * phi_reg)
+        R0_temp += rc[jn] * cosangle #+ rs[jn] * sinangle
+        Z0_temp += zs[jn] * sinangle #+ zc[jn] * cosangle
+
+    stel.R0_func = stel.convert_to_spline(R0_temp, grid = phi_reg)
+    stel.Z0_func = stel.convert_to_spline(Z0_temp, grid = phi_reg)
+
+    def smooth_fourier_sp(data, nfp, n_harm, even = True):
+        # Input grid
+        nphi = len(data)
+        # window = np.hamming(len(data))
+        # data = window * data
+
+        phi_in = np.linspace(0.0, 1.0, nphi, endpoint=False) * 2*np.pi
+        phi_out = phi_in.copy()
+
+        # Harmonic components of axis position
+        data_harm = np.zeros(int(n_harm + 1))
+        data_harm[0] = np.sum(data) / nphi            
+        factor = 2 / nphi
+
+        if even:
+            smoothed_data = np.full(len(phi_out), fill_value = data_harm[0])
+        else:
+            smoothed_data = np.zeros(len(phi_out))
+
+        for n in range(1, n_harm+1):
+            angle = n * phi_in
+            factor2 = factor
+            # The next 2 lines ensure inverse Fourier transform(Fourier transform) = identity
+            # if n == 0: factor2 = factor2 / 2
+            if even:
+                cosangle = np.cos(angle)
+                data_harm[n] = np.sum(data * cosangle * factor2)
+                smoothed_data += data_harm[n] * np.cos(n * nfp * (phi_out % (2*np.pi)))
+            else:
+                sinangle = np.sin(angle)
+                data_harm[n] = np.sum(data * sinangle * factor2)
+                smoothed_data += data_harm[n] * np.sin(n * nfp * (phi_out % (2*np.pi)))
+
+        def convert_to_spline(phi, array):
+            sp_temp = make_interp_spline(phi, array, k=7, axis=0)
+            sp = lambda x: sp_temp(x % (2*np.pi))
+            return sp
+
+        sp = convert_to_spline(phi_out, smoothed_data)
+            
+        return sp
+    
+    # Use the Fourier components of the axis to smooth R0 and Z0 
+    N = stel.nphi * 2
+    phi_ext = np.linspace(0,2,N, endpoint=False) * 2*np.pi/stel.nfp
+    even_parity = [False, True, True, True, False, False, False, True, True]
+    half = [True, True, True, True, True, True, False, False, False]
+    var_name = ["tangent_R","tangent_phi","tangent_z","normal_R","normal_phi","normal_z","binormal_R","binormal_phi","binormal_z"] # 
+    new_sp = {}
+    for parity, name in zip(even_parity, var_name):
+        array = eval('stel.' + name + '_spline(phi_ext)')
+        nfp = stel.nfp/2.0
+        sp = smooth_fourier_sp(array, nfp, 20, even = parity)
+        new_sp[name] = sp
+    
+    stel.normal_R_spline_new = new_sp["normal_R"]
+    stel.normal_phi_spline = new_sp["normal_phi"]
+    stel.normal_z_spline = new_sp["normal_z"]
+    stel.binormal_R_spline = new_sp["binormal_R"]
+    stel.binormal_phi_spline = new_sp["binormal_phi"]
+    stel.binormal_z_spline = new_sp["binormal_z"]
+    stel.tangent_R_spline = new_sp["tangent_R"]
+    stel.tangent_phi_spline = new_sp["tangent_phi"]
+    stel.tangent_z_spline = new_sp["tangent_z"]
+
+    # phi_reg = np.linspace(0.0, 1.0, stel.nphi, endpoint=False) * 2*np.pi
+    # plt.plot(phi_reg, stel.R0_func(phi_reg))
+    # plt.plot(phi_reg, stel.R0_func_new(phi_reg))
+    # plt.show()
+
 
 def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
     """

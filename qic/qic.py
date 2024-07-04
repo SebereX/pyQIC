@@ -18,7 +18,7 @@ class Qic():
     """
     
     # Import methods that are defined in separate files:
-    from .init_axis import init_axis, convert_to_spline
+    from .init_axis import init_axis
     from .calculate_r1 import _residual, _jacobian, solve_sigma_equation, \
         _determine_helicity, r1_diagnostics
     from .grad_B_tensor import calculate_grad_B_tensor, calculate_grad_grad_B_tensor, \
@@ -35,6 +35,7 @@ class Qic():
     from .optimize_nae import optimise_params, min_geo_qi_consistency
     from .to_vmec import to_vmec
     from .util import B_mag
+    from .util_interp import convert_to_spline
     from .input_structure import evaluate_input_on_grid
     
     def __init__(self, 
@@ -142,7 +143,7 @@ class Qic():
             self.Zaxis = None
 
         self.lasym = True # Temporary fix
-        
+
         ##########################
         # MAGNETIC FIELD ON AXIS #
         ##########################

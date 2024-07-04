@@ -409,9 +409,9 @@ def calculate_r2(self):
         self.Z2c_untwisted = self.Z2s * (-sinangle) + self.Z2c * cosangle
 
     # Construct some useful splines
-    self.B20_spline = self.convert_to_spline(self.B20)
-    self.B2c_spline = self.convert_to_spline(self.B2c)
-    self.B2s_spline = self.convert_to_spline(self.B2s)
+    self.B20_spline = self.convert_to_spline(self.B20, varphi = False)
+    self.B2c_spline = self.convert_to_spline(self.B2c, varphi = False)
+    self.B2s_spline = self.convert_to_spline(self.B2s, varphi = False)
 
     ######################################
     # REPRESENTATION IN QI ANGULAR BASIS #
@@ -427,8 +427,8 @@ def calculate_r2(self):
         self.B2cQI = self.B2c * np.cos(2*angle) - self.B2s * np.sin(2*angle)
         self.B2sQI = self.B2s * np.cos(2*angle) + self.B2c * np.sin(2*angle)
         # Construct splines
-        self.B2cQI_spline = self.convert_to_spline(self.B2cQI)
-        self.B2sQI_spline = self.convert_to_spline(self.B2sQI)
+        self.B2cQI_spline = self.convert_to_spline(self.B2cQI, varphi = False)
+        self.B2sQI_spline = self.convert_to_spline(self.B2sQI, varphi = False)
 
         # Compute some derived quantities
         d_B0_d_varphi = np.matmul(self.d_d_varphi, self.B0)
@@ -439,7 +439,7 @@ def calculate_r2(self):
         # Ideal B2cQI value
         self.B2cQI_ideal = (self.d * self.B0 / d_B0_d_varphi / d_B0_d_varphi /4) * (2*d_B0_d_varphi * \
                             (self.d*d_B0_d_varphi+self.B0*d_d_d_varphi) - self.B0*self.d*d_2_B0_d_varphi2)
-        self.B2cQI_ideal_spline = self.convert_to_spline(self.B2cQI_ideal)  # Make spline
+        self.B2cQI_ideal_spline = self.convert_to_spline(self.B2cQI_ideal, varphi = False)  # Make spline
         # Compute non-QI parts of B2: B20 should be even
         self.B20QI_deviation = self.B20_spline(self.phi) - self.B20_spline(-self.phi)   # B20(φ) = B20(-φ)
         # B2c should match the ideal value

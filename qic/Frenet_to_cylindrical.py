@@ -153,9 +153,9 @@ def Frenet_to_cylindrical(self, r, ntheta=20):
             # If half helicity axes are considered, we need to use the extended domain : 
             # within the 2*pi domain of the axis everything is smooth (as is the signed frame)
             # but not across phi = 0
-            X_spline = self.convert_to_spline(X_at_this_theta, half_period = self.flag_half)
-            Y_spline = self.convert_to_spline(Y_at_this_theta, half_period = self.flag_half)
-            Z_spline = self.convert_to_spline(Z_at_this_theta)
+            X_spline = self.convert_to_spline(X_at_this_theta, half_period = self.flag_half, varphi = False)
+            Y_spline = self.convert_to_spline(Y_at_this_theta, half_period = self.flag_half, varphi = False)
+            Z_spline = self.convert_to_spline(Z_at_this_theta, varphi = False)
             # print('*')
             # import matplotlib.pyplot as plt
             # phi_ext = np.linspace(-1,1,10000)*np.pi
@@ -227,9 +227,9 @@ def to_RZ(self,points):
         # within the 2*pi domain of the axis everything is smooth (as is the signed frame)
         # but not across phi = 0
         # NOTE : it has a weird blip on the leftmost point
-        X_spline = self.convert_to_spline(X_at_this_theta, half_period = self.flag_half)
-        Y_spline = self.convert_to_spline(Y_at_this_theta, half_period = self.flag_half)
-        Z_spline = self.convert_to_spline(Z_at_this_theta)
+        X_spline = self.convert_to_spline(X_at_this_theta, half_period = self.flag_half, varphi = False)
+        Y_spline = self.convert_to_spline(Y_at_this_theta, half_period = self.flag_half, varphi = False)
+        Z_spline = self.convert_to_spline(Z_at_this_theta, varphi = False)
         R, Z, Phi = Frenet_to_cylindrical_1_point(phi0, self, X_spline, Y_spline, Z_spline)
         R_final.append(R)
         Z_final.append(Z)
