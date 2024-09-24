@@ -440,8 +440,8 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     # Do nothing to the curvature and torsion: these are assumed to be given in varphi grid
     # Evaluate phi
     nu_tot = varphi - phi # if smooth_frame else smooth_fourier(varphi - phi, self.nfp, 15, varphi, even = False) # It happens to work better without this smoothing
-    nu_func = self.convert_to_spline(nu_tot, grid = varphi, periodic = True)
-    self.nu = nu_func(varphi_in)
+    self.nu_spline_of_varphi = self.convert_to_spline(nu_tot, grid = varphi, periodic = True)
+    self.nu = self.nu_spline_of_varphi(varphi_in)
     phi_out = varphi_in - self.nu
     self.phi = phi_out
     self.nu_spline = self.convert_to_spline(nu_tot, grid = phi, periodic = True)

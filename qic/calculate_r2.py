@@ -63,7 +63,7 @@ def calculate_r2(self):
     # The expression can be found in Eq.(A50) in [Landreman, Sengupta (2019)]
     # Part I: ∫dφ/B0**2/(2π/N) with the integral being over varphi in a period. Could do a sum in the 
     # regular phi grid using dφ = (dφ/dφ_c) dφ_c = dφ_c (dl/dφ_c)/(dl/dφ) 
-    average_one_over_B0_squared_over_varphi = np.trapz(np.append(1 / (B0 * B0),1 / (B0[0] * B0[0])), \
+    average_one_over_B0_squared_over_varphi = np.trapz(np.append(1 / (B0 * B0), 1 / (B0[0] * B0[0])), \
                                                        np.append(self.varphi, self.varphi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
     # average_one_over_B0_squared_over_varphi = np.sum(1 / (B0 * B0)) / nphi
 
@@ -183,7 +183,7 @@ def calculate_r2(self):
     #######################
     # COMPUTE X20 and Y20 #
     #######################
-    # From equlibrium, we need to find X20, Y20 and B20 consistently, which involves solving a linear 
+    # From equilibrium, we need to find X20, Y20 and B20 consistently, which involves solving a linear 
     # system of equations; namely, Eqs.(A41-42) in [Landreman, Sengupta (2019)] simultaneously. We use X20 and Y20 as unknowns
 
     ## Dependence of Y2c and Y2s on X20 and Y20 ##

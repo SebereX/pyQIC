@@ -94,6 +94,8 @@ def plot(self, newfigure=True, show=True, savefig=None):
         plt.legend(loc=0, fontsize=5)
         plt.ylim(0, max(max(self.inv_L_grad_B), max(self.grad_grad_B_inverse_scale_length_vs_varphi)))
         
+        subplot('beta_1s')
+        subplot('beta_1c')
         subplot('V1')
         subplot('V2')
         subplot('V3')

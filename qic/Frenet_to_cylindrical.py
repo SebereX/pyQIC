@@ -103,7 +103,7 @@ def Frenet_to_cylindrical_1_point(phi0, qic, X_spline, Y_spline, Z_spline):
     total_phi=np.arctan2(total_y, total_x)
 
     return total_R, total_z, total_phi
-
+    
 def Frenet_to_cylindrical(self, r, ntheta=20):
     """
     Function to convert the near-axis coordinate system to
@@ -180,7 +180,7 @@ def Frenet_to_cylindrical(self, r, ntheta=20):
             
     return R_2D, Z_2D, phi0_2D
 
-
+    
 def to_RZ(self,points):
     """
     Function to convert a set of points in (r,theta,phi0) coordinates

@@ -886,7 +886,44 @@ class Qic():
             nphi    = 201
             add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, nfp=nfp, B0 = B0, d = d, d_over_curvature = d_over_curvature, nphi = nphi, \
                              omn_buffer = buffer_opt, sigma0 = sigma0, p2 = p2, X2c = X2c, X2s = X2s, omn = True, order = 'r3')
-               
+        elif name == "QI NFP2 Katia min":
+            ####################################
+            # ORIGINAL KATIA NFP 2 w/ SMOOTH α #
+            ####################################
+            # Axis
+            Raxis = {"type": 'fourier',
+                        "input_value": {"cos": [ 1.0,0.0,-1/17 ],
+                                        "sin":  [ 0.0,0.0,0.0 ]}}
+            Zaxis = {"type": 'fourier',
+                        "input_value": {"cos": [ 0.0,0.0,0.0 ],
+                                        "sin": [ 0.0,0.8/2.04,0.01/2.04 ]}}
+            # Magnetic field
+            B0 = {"type": 'fourier',
+                        "input_value": {"cos": [1.0, 0.15], "sin": [0.0, 0.0]}}
+            
+            # First order field
+            d = None
+            d_over_curvature = {"type": 'scalar', "input_value": 0.73}
+
+            # Second order shaping : 'minimal' shaping choice
+            X2c = {"type": 'scalar', "input_value": 0}
+            X2s = {"type": 'scalar', "input_value": 0}
+            
+            # Buffer region details : use the standard form of [Camacho et al. (2022)]
+            buffer_opt = {"omn_method": 'simple-fourier', 
+                        "k_buffer": 5}
+
+            # Additional properties
+            sigma0 = 0.0
+            nfp     = 2
+            p2      = 0.0
+            order = 'r3'
+            omn = True
+            nphi    = 501
+
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, nfp=nfp, B0 = B0, d = d, d_over_curvature = d_over_curvature, nphi = nphi, \
+                             omn_buffer = buffer_opt, sigma0 = sigma0, p2 = p2, X2c = X2c, X2s = X2s, omn = omn, order = order)
+            
         elif name == "QI NFP2 Katia smooth":
             Raxis = {"type": 'fourier',
                      "input_value": {"cos": [ 1.0,0.0,-1/17 ],
@@ -986,7 +1023,8 @@ class Qic():
 
             add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, nfp=nfp, B0 = B0, d = d, d_over_curvature = d_over_curvature, nphi = nphi, \
                              omn_buffer = buffer_opt, sigma0 = sigma0, p2 = p2, X2c = X2c, X2s = X2s, omn = True, order = 'r3')
-            
+       
+
         else:
             raise ValueError('Unrecognized configuration name')
 

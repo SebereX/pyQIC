@@ -47,8 +47,7 @@ def to_vmec(self, filename, r=0.1, params=dict(), ntheta=20, ntorMax=14):
     if "precon_type" not in params.keys():
         params["precon_type"] = 'NONE'
     if "precon_thresh" not in params.keys():
-        params["precon_thresh"] = 1.00000e-30
-    
+        params["precon_thresh"] = 1.00000e-30    
 
     phiedge = np.pi * r * r * self.spsi * self.Bbar
 
@@ -98,6 +97,8 @@ def to_vmec(self, filename, r=0.1, params=dict(), ntheta=20, ntorMax=14):
     file_object.write('  NITER_ARRAY = '+str(params["niter_array"])[1:-1]+'\n')
     file_object.write("  PRECON_TYPE = '"+str(params["precon_type"])+"'\n")
     file_object.write('  PREC2D_THRESHOLD = '+str(params["precon_thresh"])+'\n')
+    if "pre_niter" in params.keys():
+        file_object.write('  PRE_NITER = '+str(params["pre_niter"])+'\n')
     file_object.write('!----- Grid Parameters -----\n')
     file_object.write('  LASYM = '+str(self.lasym)+'\n')
     file_object.write('  NFP = '+str(self.nfp)+'\n')
