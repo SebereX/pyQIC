@@ -317,9 +317,13 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     # CHOOSE THE Z AXIS #
     #####################
     # Find set of SS points
-    set1, _ = find_ss_points(self, T_fun, position_fun=position_fun)
+    set1, set2 = find_ss_points(self, T_fun, position_fun=position_fun)
 
     # Find the necessary rotation and shift of the coordinates to frame in cylindrical coordinates
+    if self.nfp == 2:
+        set1 = np.concatenate(([set1[0]],[set2[0]],[set1[1]],[set2[1]]))
+    else:
+        print("WARNING! FS alignment and inversion not implemented for nfp = 1.")
     center, ss_points, rotation_matrix = transform_polygon(set1)
 
     # Functions for transformed positions and vectors

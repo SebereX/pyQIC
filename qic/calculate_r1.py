@@ -487,7 +487,7 @@ def r1_diagnostics(self):
     # UNTWISTED θ #
     ###############
     # If helicity is nonzero, then the original X1s/X1c/Y1s/Y1c variables are defined with respect to a "poloidal" angle χ that
-    # is actually helical. Here we convert to an untwisted poloidal angle.
+    # is actually helical. Here we convert to an untwisted poloidal angle. Used especially for plotting.
     if self.helicity == 0:
         # If not helicity χ = θ
         self.X1s_untwisted = self.X1s
