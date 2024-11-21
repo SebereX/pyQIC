@@ -148,8 +148,8 @@ def calculate_r2(self):
         B2s = np.full(nphi, self.B2s_in)
     else:
         # If QI, the harmonic components of X at second order are provided
-        X2c = self.evaluate_input_on_grid(self.X2c_in, self.varphi)
-        X2s = self.evaluate_input_on_grid(self.X2s_in, self.varphi)
+        X2c = self.evaluate_input_on_grid(self.X2c_in, self.varphi, periodic = False)
+        X2s = self.evaluate_input_on_grid(self.X2s_in, self.varphi, periodic = False)
 
     ## Construct the other parts (X2c/X2s in QS and B2c/B2s in QI)
     # Auxiliary definitions Eqs.(A37-40) in [Landreman, Sengupta (2019)]
