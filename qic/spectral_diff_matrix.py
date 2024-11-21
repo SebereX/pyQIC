@@ -111,7 +111,7 @@ def construct_periodic_diff_matrix(diff_finite, nphi, nfp):
             diff_order = 2
         elif diff_finite == 6:
             d_d_phi = finite_difference_matrix(nphi, order = 6) * nfp
-            diff_order = 2
+            diff_order = 6
         else:
             d_d_phi = finite_difference_matrix(nphi, order = 4) * nfp
             diff_order = 4

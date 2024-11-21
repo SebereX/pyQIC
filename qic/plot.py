@@ -20,9 +20,14 @@ def plot(self, newfigure=True, show=True, savefig=None):
         newfigure: Whether to create a new matplotlib figure.
         show: Whether to call matplotlib's ``show()`` function after making the plots.
     """
+    # Save current plotting parameters to restore afterwards
+    original_rcparams = plt.rcParams.copy()
     if newfigure:
         f = plt.figure(figsize=(14, 7))
-    plt.rcParams.update({'font.size': 6})
+        plt.rcParams.update({'font.size': 6})
+    else:
+        f = plt.gcf()
+        
     if self.order == 'r1':
         if self.omn:
             nrows = 4
@@ -174,6 +179,8 @@ def plot(self, newfigure=True, show=True, savefig=None):
         plt.savefig(savefig+'.pdf')
     if show:
         plt.show()
+    # Restore the original rcParams after the plot is displayed
+    plt.rcParams.update(original_rcparams)
 
 def set_axes_equal(ax):
     '''

@@ -322,7 +322,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     # Find the necessary rotation and shift of the coordinates to frame in cylindrical coordinates
     if self.nfp == 2:
         set1 = np.concatenate(([set1[0]],[set2[0]],[set1[1]],[set2[1]]))
-    else:
+    elif self.nfp == 1:
         print("WARNING! FS alignment and inversion not implemented for nfp = 1.")
     center, ss_points, rotation_matrix = transform_polygon(set1)
 
