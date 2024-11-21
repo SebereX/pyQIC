@@ -26,7 +26,9 @@ class Qic():
         grad_grad_B_tensor_cylindrical, grad_grad_B_tensor_cartesian
     from .calculate_r2 import calculate_r2, construct_qi_r2, evaluate_X2c_X2s_QI
     from .calculate_r3 import calculate_r3
-    from .mercier import mercier
+    from .mercier import mercier, mercier_detailed
+    from .precession import plot_precession_different_alpha, maxj_at_bottom
+    from .omnigeneity import compute_eps_eff
     from .plot import plot, get_boundary, B_fieldline, B_contour, plot_axis
     from .r_singularity import calculate_r_singularity
     from .plot import plot, plot_boundary, get_boundary, B_fieldline, B_contour, plot_axis, B_densityplot
@@ -381,9 +383,15 @@ class Qic():
                     length_sin = len(input_dict["input_value"]["sin"])
                     input_dict["input_value"]["sin"] = x[init+length_cos:init+length_cos+length_sin]
                     len_input = length_cos + length_sin
-                else:
+                elif input_dict["type"] == 'grid' or input_dict["type"] == 'spline':
                     len_input = len(input_dict["input_value"])
                     input_dict["input_value"] = x[init:init+len_input]
+                elif input_dict["type"] == 'function':
+                    input_dict["function"] = x[init]
+                    len_input = 1
+                else:
+                    len_input = 0
+                    print("WARNING! Unrecognised input type for name  in pos {}!".format(init))
             else:
                 # In case None or otherwise, do not add anything
                 len_input = 0
@@ -481,9 +489,14 @@ class Qic():
                 length_sin = len(input_dict["input_value"]["sin"])
                 sin_str = [name_str + 's({})'.format(j) for j in range(length_sin)]
                 new_str = cos_str + sin_str
-            else:
+            elif input_dict["type"] == 'grid' or input_dict["type"] == 'spline':
                 length_array = len(input_dict["input_value"])
                 new_str = [name_str + '({})'.format(j) for j in range(length_array)]
+            elif input_dict["type"] == 'function':
+                new_str = [name_str]
+            else:
+                new_str = []
+                print("WARNING! Unrecognised input type for {}!".format(name_str))
         else:
             # In case None or otherwise, do not add anything
             new_str = []
