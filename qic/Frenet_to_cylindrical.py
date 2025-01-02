@@ -3,10 +3,297 @@ This module contains the routines to compute
 a given flux surface shape at a fixed
 off-axis cylindrical toroidal angle
 """
-
+import os
 import numpy as np
-from tqdm import tqdm
 from scipy.optimize import root_scalar
+from pathos.multiprocessing import ProcessingPool as Pool
+from tqdm import tqdm
+
+  
+def Frenet_to_cylindrical(self, r, ntheta=20, parallel = True):
+    """
+    Function to convert the near-axis coordinate system to
+    a cylindrical one for a surface at a particular radius,
+    outputing the following arrays: R(theta,phi),
+    phi0(theta,phi) and Z(theta,phi) with R,phi, Z cylindrical
+    coordinates and theta Boozer coordinate and phi0 the 
+    cylindrical coordinate on axis.
+
+    Args:
+        r:  near-axis radius r of the desired boundary surface
+        ntheta: resolution in the poloidal angle theta
+    """
+    if parallel:
+        R_2D, Z_2D, phi0_2D = Frenet_to_cylindrical_parallel(self, r, ntheta)
+    else:
+        R_2D, Z_2D, phi0_2D = Frenet_to_cylindrical_no_parallel(self, r, ntheta)
+            
+    return R_2D, Z_2D, phi0_2D
+
+def Frenet_to_cylindrical_parallel(self, r, ntheta=20):
+    """
+    Function to convert the near-axis coordinate system to
+    a cylindrical one for a surface at a particular radius,
+    outputing the following arrays: R(theta,phi),
+    phi0(theta,phi) and Z(theta,phi) with R,phi, Z cylindrical
+    coordinates and theta Boozer coordinate and phi0 the 
+    cylindrical coordinate on axis.
+
+    Args:
+        r:  near-axis radius r of the desired boundary surface
+        ntheta: resolution in the poloidal angle theta
+    """
+    nphi_conversion = self.nphi
+    nfp = self.nfp
+
+    theta = np.linspace(0,2*np.pi,ntheta,endpoint=False)
+    phi_conversion = np.linspace(0,2*np.pi/self.nfp,nphi_conversion,endpoint=False)
+    R_2D = np.zeros((ntheta,nphi_conversion))
+    Z_2D = np.zeros((ntheta,nphi_conversion))
+    phi0_2D = np.zeros((ntheta,nphi_conversion))
+
+    # Defining the attributes
+    order = self.order
+    flag_half = self.flag_half
+
+    # Real space geometry
+    normal_R_spline = self.normal_R_spline
+    normal_phi_spline = self.normal_phi_spline
+    binormal_R_spline = self.binormal_R_spline
+    binormal_phi_spline = self.binormal_phi_spline
+    tangent_R_spline = self.tangent_R_spline
+    tangent_phi_spline = self.tangent_phi_spline
+    R0_func = self.R0_func
+    Z0_func = self.Z0_func
+    normal_z_spline = self.normal_z_spline
+    binormal_z_spline = self.binormal_z_spline
+    tangent_z_spline = self.tangent_z_spline
+    
+    # Frenet-Serret space
+    X1c_untwisted = self.X1c_untwisted
+    X1s_untwisted = self.X1s_untwisted
+    Y1c_untwisted = self.Y1c_untwisted
+    Y1s_untwisted = self.Y1s_untwisted
+    if order != 'r1':
+        # We need O(r^2) terms:
+        X20_untwisted = self.X20_untwisted
+        X2c_untwisted = self.X2c_untwisted
+        X2s_untwisted = self.X2s_untwisted
+        Y20_untwisted = self.Y20_untwisted
+        Y2c_untwisted = self.Y2c_untwisted
+        Y2s_untwisted = self.Y2s_untwisted
+        Z20_untwisted = self.Z20_untwisted
+        Z2c_untwisted = self.Z2c_untwisted
+        Z2s_untwisted = self.Z2s_untwisted
+        if self.order == 'r3':
+            # We need O(r^3) terms:
+            X3c1_untwisted = self.X3c1_untwisted
+            X3s1_untwisted = self.X3s1_untwisted
+            X3c3_untwisted = self.X3c3_untwisted
+            X3s3_untwisted = self.X3s3_untwisted
+            Y3c1_untwisted = self.Y3c1_untwisted
+            Y3s1_untwisted = self.Y3s1_untwisted
+            Y3c3_untwisted = self.Y3c3_untwisted
+            Y3s3_untwisted = self.Y3s3_untwisted
+            Z3c1_untwisted = self.Z3c1_untwisted
+            Z3s1_untwisted = self.Z3s1_untwisted
+            Z3c3_untwisted = self.Z3c3_untwisted
+            Z3s3_untwisted = self.Z3s3_untwisted
+
+    # Define the splining function
+    convert_to_spline = self.convert_to_spline
+
+    def Frenet_to_cylindrical_residual_func_par(phi0, phi_target, R0_func, normal_R_spline, normal_phi_spline,
+                                            binormal_R_spline, binormal_phi_spline, tangent_R_spline, tangent_phi_spline,
+                                            X_spline, Y_spline, Z_spline, order):
+        """
+        Residual function with explicit arguments instead of self/qic.
+        """
+        sinphi0 = np.sin(phi0)
+        cosphi0 = np.cos(phi0)
+        R0_at_phi0 = R0_func(phi0)
+        X_at_phi0 = X_spline(phi0)
+        Y_at_phi0 = Y_spline(phi0)
+        normal_R = normal_R_spline(phi0)
+        normal_phi = normal_phi_spline(phi0)
+        binormal_R = binormal_R_spline(phi0)
+        binormal_phi = binormal_phi_spline(phi0)
+
+        normal_x = normal_R * cosphi0 - normal_phi * sinphi0
+        normal_y = normal_R * sinphi0 + normal_phi * cosphi0
+        binormal_x = binormal_R * cosphi0 - binormal_phi * sinphi0
+        binormal_y = binormal_R * sinphi0 + binormal_phi * cosphi0
+
+        total_x = R0_at_phi0 * cosphi0 + X_at_phi0 * normal_x + Y_at_phi0 * binormal_x
+        total_y = R0_at_phi0 * sinphi0 + X_at_phi0 * normal_y + Y_at_phi0 * binormal_y
+
+        if order != 'r1':
+            Z_at_phi0 = Z_spline(phi0)
+            tangent_x = tangent_R_spline(phi0) * cosphi0 - tangent_phi_spline(phi0) * sinphi0
+            tangent_y = tangent_R_spline(phi0) * sinphi0 + tangent_phi_spline(phi0) * cosphi0
+            total_x += Z_at_phi0 * tangent_x
+            total_y += Z_at_phi0 * tangent_y
+
+        residual = np.arctan2(total_y, total_x) - phi_target
+        if residual > np.pi:
+            residual -= 2 * np.pi
+        if residual < -np.pi:
+            residual += 2 * np.pi
+        return residual
+
+    def Frenet_to_cylindrical_1_point_par(
+        phi0, R0_func, Z0_func, normal_R_spline, normal_phi_spline, normal_z_spline,
+        binormal_R_spline, binormal_phi_spline, binormal_z_spline,
+        tangent_R_spline, tangent_phi_spline, tangent_z_spline,
+        X_spline, Y_spline, Z_spline, order
+    ):
+        """
+        Computes the cylindrical coordinate components R and Z for an associated point at r > 0.
+        
+        Args:
+            phi0 (float): Toroidal angle on the axis.
+            R0_func (callable): Function returning the radial coordinate at phi0.
+            Z0_func (callable): Function returning the Z-coordinate at phi0.
+            normal_R_spline, normal_phi_spline, normal_z_spline (callables): Splines for the normal components.
+            binormal_R_spline, binormal_phi_spline, binormal_z_spline (callables): Splines for the binormal components.
+            tangent_R_spline, tangent_phi_spline, tangent_z_spline (callables): Splines for the tangent components.
+            X_spline, Y_spline, Z_spline (callables): Splines for the near-axis coordinates.
+            order (str): The computation order ('r1', 'r2', etc.).
+
+        Returns:
+            tuple: (R, Z, phi) - Cylindrical coordinates.
+        """
+        sinphi0 = np.sin(phi0)
+        cosphi0 = np.cos(phi0)
+        R0_at_phi0 = R0_func(phi0)
+        z0_at_phi0 = Z0_func(phi0)
+        X_at_phi0 = X_spline(phi0)
+        Y_at_phi0 = Y_spline(phi0)
+        Z_at_phi0 = Z_spline(phi0)
+        normal_R = normal_R_spline(phi0)
+        normal_phi = normal_phi_spline(phi0)
+        normal_z = normal_z_spline(phi0)
+        binormal_R = binormal_R_spline(phi0)
+        binormal_phi = binormal_phi_spline(phi0)
+        binormal_z = binormal_z_spline(phi0)
+
+        normal_x = normal_R * cosphi0 - normal_phi * sinphi0
+        normal_y = normal_R * sinphi0 + normal_phi * cosphi0
+        binormal_x = binormal_R * cosphi0 - binormal_phi * sinphi0
+        binormal_y = binormal_R * sinphi0 + binormal_phi * cosphi0
+
+        total_x = R0_at_phi0 * cosphi0 + X_at_phi0 * normal_x + Y_at_phi0 * binormal_x
+        total_y = R0_at_phi0 * sinphi0 + X_at_phi0 * normal_y + Y_at_phi0 * binormal_y
+        total_z = z0_at_phi0 + X_at_phi0 * normal_z + Y_at_phi0 * binormal_z
+
+        if order != 'r1':
+            tangent_R = tangent_R_spline(phi0)
+            tangent_phi = tangent_phi_spline(phi0)
+            tangent_z = tangent_z_spline(phi0)
+
+            tangent_x = tangent_R * cosphi0 - tangent_phi * sinphi0
+            tangent_y = tangent_R * sinphi0 + tangent_phi * cosphi0
+
+            total_x += Z_at_phi0 * tangent_x
+            total_y += Z_at_phi0 * tangent_y
+            total_z += Z_at_phi0 * tangent_z
+
+        total_R = np.sqrt(total_x ** 2 + total_y ** 2)
+        total_phi = np.arctan2(total_y, total_x)
+
+        return total_R, total_z, total_phi
+
+    def process_theta(j_theta):
+        """
+        Worker function to process a single theta value.
+        """
+        costheta = np.cos(theta[j_theta])
+        sintheta = np.sin(theta[j_theta])
+        X_at_this_theta = r * (X1c_untwisted * costheta + X1s_untwisted * sintheta)
+        Y_at_this_theta = r * (Y1c_untwisted * costheta + Y1s_untwisted * sintheta)
+        Z_at_this_theta = 0 * X_at_this_theta
+        if order != 'r1':
+            cos2theta = np.cos(2 * theta[j_theta])
+            sin2theta = np.sin(2 * theta[j_theta])
+            X_at_this_theta += r * r * (X20_untwisted + X2c_untwisted * cos2theta + X2s_untwisted * sin2theta)
+            Y_at_this_theta += r * r * (Y20_untwisted + Y2c_untwisted * cos2theta + Y2s_untwisted * sin2theta)
+            Z_at_this_theta += r * r * (Z20_untwisted + Z2c_untwisted * cos2theta + Z2s_untwisted * sin2theta)
+            if order == 'r3':
+                cos3theta = np.cos(3 * theta[j_theta])
+                sin3theta = np.sin(3 * theta[j_theta])
+                r3 = r * r * r
+                X_at_this_theta += r3 * (X3c1_untwisted * costheta + X3s1_untwisted * sintheta +
+                                         X3c3_untwisted * cos3theta + X3s3_untwisted * sin3theta)
+                Y_at_this_theta += r3 * (Y3c1_untwisted * costheta + Y3s1_untwisted * sintheta +
+                                         Y3c3_untwisted * cos3theta + Y3s3_untwisted * sin3theta)
+                Z_at_this_theta += r3 * (Z3c1_untwisted * costheta + Z3s1_untwisted * sintheta +
+                                         Z3c3_untwisted * cos3theta + Z3s3_untwisted * sin3theta)
+
+        X_spline = convert_to_spline(X_at_this_theta, half_period=flag_half, varphi=False)
+        Y_spline = convert_to_spline(Y_at_this_theta, half_period=flag_half, varphi=False)
+        Z_spline = convert_to_spline(Z_at_this_theta, varphi=False)
+
+        R_row = np.zeros(nphi_conversion)
+        Z_row = np.zeros(nphi_conversion)
+        phi0_row = np.zeros(nphi_conversion)
+
+        for j_phi in range(nphi_conversion):
+            phi_target = phi_conversion[j_phi]
+            phi0_rootSolve_min = phi_target - 1.0 / nfp
+            phi0_rootSolve_max = phi_target + 1.0 / nfp
+            res = root_scalar(
+                Frenet_to_cylindrical_residual_func_par,
+                xtol=1e-17,
+                rtol=1e-15,
+                maxiter=2000,
+                args=(
+                    phi_target, R0_func, normal_R_spline, normal_phi_spline, binormal_R_spline, binormal_phi_spline,
+                    tangent_R_spline, tangent_phi_spline, X_spline, Y_spline, Z_spline, order),
+                bracket=[phi0_rootSolve_min, phi0_rootSolve_max],
+                x0=phi_target
+            )
+            phi0_solution = res.root
+            final_R, final_z, _ = final_R, final_z, final_phi = Frenet_to_cylindrical_1_point_par(
+                    phi0_solution, R0_func, Z0_func,
+                    normal_R_spline, normal_phi_spline, normal_z_spline,
+                    binormal_R_spline, binormal_phi_spline, binormal_z_spline,
+                    tangent_R_spline, tangent_phi_spline, tangent_z_spline,
+                    X_spline, Y_spline, Z_spline, order
+                )
+            R_row[j_phi] = final_R
+            Z_row[j_phi] = final_z
+            phi0_row[j_phi] = phi0_solution
+
+
+        return j_theta, R_row, Z_row, phi0_row
+
+    # Use ThreadPoolExecutor for parallel processing\
+    from multiprocessing import Manager
+    with Manager() as manager:
+        progress_queue = manager.Queue()
+
+        # Define a processing pool
+        n_process = os.cpu_count()
+        with Pool(processes = n_process) as pool:
+            # Create a tqdm progress bar
+            with tqdm(total=ntheta, desc="Processing theta", ncols=100) as pbar:
+                # Start processing the tasks
+                results = []
+                for result in pool.imap(process_theta, range(ntheta)):
+                    # Each time a task completes, update the progress bar
+                    results.append(result)  # Collect the result
+                    pbar.update(1)
+
+    # with ThreadPoolExecutor() as executor:
+    #     results = list(executor.map(process_theta, range(ntheta)))
+
+    # Combine results into the final arrays
+    for j_theta, R_row, Z_row, phi0_row in results:
+        R_2D[j_theta, :] = R_row
+        Z_2D[j_theta, :] = Z_row
+        phi0_2D[j_theta, :] = phi0_row
+            
+    return R_2D, Z_2D, phi0_2D
 
 def Frenet_to_cylindrical_residual_func(phi0, phi_target, qic, X_spline, Y_spline, Z_spline):
     """
@@ -104,7 +391,7 @@ def Frenet_to_cylindrical_1_point(phi0, qic, X_spline, Y_spline, Z_spline):
 
     return total_R, total_z, total_phi
     
-def Frenet_to_cylindrical(self, r, ntheta=20):
+def Frenet_to_cylindrical_no_parallel(self, r, ntheta=20):
     """
     Function to convert the near-axis coordinate system to
     a cylindrical one for a surface at a particular radius,
@@ -179,8 +466,7 @@ def Frenet_to_cylindrical(self, r, ntheta=20):
             pbar.update(1)
             
     return R_2D, Z_2D, phi0_2D
-
-    
+   
 def to_RZ(self,points):
     """
     Function to convert a set of points in (r,theta,phi0) coordinates

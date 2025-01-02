@@ -10,6 +10,7 @@ import matplotlib.colors as clr
 from matplotlib.colors import LightSource
 import matplotlib.ticker as tck
 from .util import to_Fourier
+import mplcursors
 
 def plot(self, newfigure=True, show=True, savefig=None):
     """
@@ -323,7 +324,7 @@ def create_subplot_mayavi(mlab, R, alphas, x_2D_plot, y_2D_plot, z_2D_plot,
         for j in range(len(alphas)):
             mlab.plot3d(fieldline_X_rotated[j], fieldline_Y_rotated[j]-shift_array[i], fieldline_Z_rotated[j], color=(0,0,0), line_width=0.002, tube_radius=0.008)
 
-def get_boundary(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, ntor=25, phi1d = None):
+def get_boundary(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, ntor=25, phi1d = None, parallel = True):
     '''
     Function that, for a given near-axis radial coordinate r, outputs
     the [X,Y,Z,R] components of the boundary. The resolution along the toroidal
@@ -339,7 +340,7 @@ def get_boundary(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, n
       ntor: resolution in toroidal Fourier space
     '''
     # Get surface shape at fixed off-axis toroidal angle phi
-    R_2D, Z_2D, _ = self.Frenet_to_cylindrical(r, ntheta=ntheta_fourier)
+    R_2D, Z_2D, _ = self.Frenet_to_cylindrical(r, ntheta=ntheta_fourier, parallel = parallel)
     # Get Fourier coefficients in order to plot with arbitrary resolution
     RBC, RBS, ZBC, ZBS = to_Fourier(R_2D, Z_2D, self.nfp, mpol=mpol, ntor=ntor, lasym=self.lasym)
     if not self.lasym:
@@ -369,8 +370,8 @@ def get_boundary(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, n
     return x_2D_plot, y_2D_plot, z_2D_plot, R_2Dnew
 
 def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections=8, mpol=13, ntor=25,
-         fieldlines=False, savefig=None, colormap=None, azim_default=None, threeD=True, n_field_lines=1,
-         show=True, axis = None, plot_3d = True, legend = True, **kwargs):
+         fieldlines=False, savefig=None, colormap=None, azim_default=None, plot_3d=True, n_field_lines=1,
+         show=True, axis = None, legend = True, legend_text = None, parallel = True, **kwargs):
     """
     Plot the boundary of the near-axis configuration. There are two main ways of
     running this function.
@@ -418,7 +419,8 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
     .. image:: poloidalplot.png
        :width: 200
     """
-    x_2D_plot, y_2D_plot, z_2D_plot, R_2D_plot = self.get_boundary(r=r, ntheta=ntheta, nphi=nphi, ntheta_fourier=ntheta_fourier, mpol = mpol, ntor = ntor)
+    x_2D_plot, y_2D_plot, z_2D_plot, R_2D_plot = self.get_boundary(r=r, ntheta=ntheta, nphi=nphi, ntheta_fourier=ntheta_fourier, \
+                                                                    mpol = mpol, ntor = ntor, parallel = parallel)
     phi = np.linspace(0, 2 * np.pi, nphi)  # Endpoint = true and no nfp factor, because this is what is used in get_boundary()
     R_2D_spline = interp1d(phi, R_2D_plot, axis=1)
     z_2D_spline = interp1d(phi, z_2D_plot, axis=1)
@@ -429,6 +431,13 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
         ax  = plt.gca()
     else:
         ax = axis
+
+    flag_color = False
+    if "color" in kwargs:
+        color = kwargs["color"]
+        kwargs.pop("color")
+        flag_color = True
+
     for i, phi in enumerate(phi1dplot_RZ):
         phinorm = phi * self.nfp / (2 * np.pi)
         if phinorm == 0:
@@ -449,20 +458,24 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
             label = r'$\phi={7\pi}/$' + str(4 * self.nfp)
         else:
             label = '_nolegend_'
-        if "color" in kwargs:
-            color = kwargs["color"]
-            kwargs.pop("color")
-        else:
+        if not flag_color:
             color = next(ax._get_lines.prop_cycler)['color']
+
         # Plot location of the axis
-        plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, label=label, color=color)
-        if threeD == True:
+        if not legend_text is None:
+            if i == 0:
+                plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, label=legend_text, color=color)
+            else:
+                plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, color=color)
+        else:
+            plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, label=label, color=color)
+        if plot_3d == True:
             # Plot poloidal cross-section
             plt.plot(R_2D_spline(phi), z_2D_spline(phi), color=color)
         else:
             plt.plot(R_2D_spline(phi), z_2D_spline(phi), color=color, **kwargs)
-    plt.xlabel('R (meters)', fontsize=14)
-    plt.ylabel('Z (meters)', fontsize=14)
+    plt.xlabel('R [m]', fontsize=14)
+    plt.ylabel('Z [m]', fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=12)
     ax.tick_params(axis='both', which='minor', labelsize=12)
     if legend:
@@ -476,7 +489,7 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
     # Set the default azimuthal angle of view in the 3D plot
     # QH stellarators look rotated in the phi direction when
     # azim_default = 0
-    if threeD==True:
+    if plot_3d==True:
         if azim_default == None:
             if self.omn == True:
                 azim_default = -90
@@ -573,8 +586,9 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
                     mlab.close(all=True)
     else:
         if show:
-                    # Show figures
-                    plt.show()
+            # Show figures
+            plt.show()
+    return ax
 
 def B_fieldline(self, r=0.1, alpha=0, phimax=None, nphi=400, show=True, savefig=None):
     '''
@@ -606,7 +620,7 @@ def B_fieldline(self, r=0.1, alpha=0, phimax=None, nphi=400, show=True, savefig=
     if show:
         plt.show()
 
-def B_contour(self, r=0.1, ntheta=100, nphi=120, ncontours=20, B0=1, ax = None, show=True, savefig=None, colorbar = True, fill = False, **kwargs):
+def B_contour(self, r=0.1, ntheta=100, nphi=120, ncontours=20, B0=1, inter = False, ax = None, show=True, fieldline = False, savefig=None, colorbar = True, fill = False, chi = False, **kwargs):
     '''
     Plot contours of constant B, with B the modulus of the
     magnetic field, as a function of Boozer coordinates theta and varphi
@@ -621,7 +635,11 @@ def B_contour(self, r=0.1, ntheta=100, nphi=120, ncontours=20, B0=1, ax = None, 
     theta_array=np.linspace(0,2*np.pi,ntheta)
     phi_array=np.linspace(0,2*np.pi/self.nfp,nphi)
     theta_2D, phi_2D = np.meshgrid(theta_array,phi_array)
-    magB_2D = self.B_mag(r,theta_2D,phi_2D,Boozer_toroidal=True,B0=B0)
+    # If chi is True, then use theta as chi (careful with the sign)
+    if chi:
+        magB_2D = self.B_mag(r,theta_2D - self.helicity * self.nfp * phi_2D,phi_2D,Boozer_toroidal=True,B0=B0)
+    else:
+        magB_2D = self.B_mag(r,theta_2D,phi_2D,Boozer_toroidal=True,B0=B0)
     if ax == None:
         fig_B_contour, ax=plt.subplots(1,1)
 
@@ -641,10 +659,18 @@ def B_contour(self, r=0.1, ntheta=100, nphi=120, ncontours=20, B0=1, ax = None, 
         contourplot = ax.contour(self.nfp*phi_2D/np.pi, theta_2D/np.pi, magB_2D, ncontours, **kwargs)
     if colorbar:
         plt.colorbar(contourplot)
+    
+    if fieldline:
+        if chi:
+            plt.plot(self.nfp*phi_array/np.pi, 1.0 + self.iotaN*(phi_array-np.pi/self.nfp)/np.pi, 'k')
+        else:
+            plt.plot(self.nfp*phi_array/np.pi, 1.0 + self.iota*(phi_array-np.pi/self.nfp)/np.pi, 'k')
 
     ax.set_xlabel(r'$\varphi$')
-    ax.set_ylabel(r'$\theta$')
-    
+    if chi:
+        ax.set_ylabel(r'$\chi$')
+    else:
+        ax.set_ylabel(r'$\theta$')    
     def fraction_format(x, pos, nfp):
         if x == 0.0:
             return "0"
@@ -672,6 +698,27 @@ def B_contour(self, r=0.1, ntheta=100, nphi=120, ncontours=20, B0=1, ax = None, 
     ax.yaxis.set_major_formatter(tck.FuncFormatter(lambda x, pos: fraction_format(x, pos, 1)))
     ax.xaxis.set_major_locator(tck.MultipleLocator(base=0.5))
     ax.yaxis.set_major_locator(tck.MultipleLocator(base=0.5))
+    if inter:
+        # Add mplcursors cursor with a cu# Add annotation for hover display
+        annot = ax.annotate("", xy=(0, 0), xytext=(10, 10), textcoords="offset points",
+                            bbox=dict(boxstyle="round", fc="w"),
+                            arrowprops=dict(arrowstyle="->"), fontsize = 8)
+        annot.set_visible(False)
+
+        def update_annot(event):
+            # Check if the cursor is in the plot area
+            if event.inaxes == ax:
+                # Get the cursor's data coordinates
+                x, y = event.xdata, event.ydata
+                
+                # Update the annotation
+                annot.xy = (x, y)
+                annot.set_text(f"{self.nfp}" + r"$\varphi/\pi =$" + f"{x:.2f}, " + r"$\theta/\pi=$" + f"{y:.2f}")
+                annot.set_visible(True)
+                plt.gcf().canvas.draw_idle()
+
+        # Connect the motion event to the update function
+        plt.gcf().canvas.mpl_connect("motion_notify_event", update_annot)
     plt.tight_layout()
     if savefig != None:
         fig_B_contour.savefig(savefig + '_B_contour.pdf')
@@ -832,3 +879,5 @@ def plot_axis(self, nphi=100, frenet=True, nphi_frenet=80, frenet_factor=0.12, s
         if show:
             # Show figure
             plt.show()
+
+
