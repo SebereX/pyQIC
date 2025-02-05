@@ -41,8 +41,8 @@ def convert_to_spline(self, array, grid = None, varphi = False, periodic = True,
                     domain_ext = np.concatenate((domain[:-1] - 2*np.pi, domain, domain[1:] + 2*np.pi))
                     array_ext = np.concatenate((array[:-1]*sgn_half**self.nfp, array, array[1:]*sgn_half**self.nfp))
                 else:
-                    domain_ext = np.concatenate((domain - 2*np.pi, domain, domain + 2*np.pi, 4*np.pi + domain[0]))
-                    array_ext = np.concatenate((array*sgn_half**self.nfp, array, array*sgn_half**self.nfp, array[0]*sgn_half**self.nfp))
+                    domain_ext = np.concatenate((domain - 2*np.pi, domain, domain + 2*np.pi, [4*np.pi + domain[0]]))
+                    array_ext = np.concatenate((array*sgn_half**self.nfp, array, array*sgn_half**self.nfp, [array[0]*sgn_half**self.nfp]))
             else:
                 if flag_closed:
                     domain_ext = np.concatenate(tuple(domain[:-1] + 2*np.pi/self.nfp*j for j in range(-1,self.nfp+1,1)))
@@ -66,7 +66,7 @@ def convert_to_spline(self, array, grid = None, varphi = False, periodic = True,
             sp_temp = make_interp_spline(domain_ext, array_ext, k=7, axis=0, bc_type = bc_type)
             sp = lambda x: sp_temp(x % (2*np.pi/self.nfp))
     else:
-        sp = make_interp_spline(grid, array, k = 7)
+        sp = make_interp_spline(domain, array, k = 7)
     return sp
 
 ## THINK ALSO OF THE USE IN INPUT INTERPOLATION ##
