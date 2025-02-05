@@ -8,6 +8,7 @@ become singular.
 import logging
 import warnings
 import numpy as np
+from .fqs import quartic_roots
 #from .util import Struct, fourier_minimum
 
 #logging.basicConfig(level=logging.DEBUG)
@@ -303,17 +304,24 @@ def calculate_r_singularity(self, high_order=False):
 
     coefficients[:, 0] = (K0 + K4c)*(K0 + K4c) - K2c*K2c
 
-    for jphi in range(nphi):
-        # Solve for the roots of the quartic polynomial:
-        try:
-            roots = np.polynomial.polynomial.polyroots(coefficients[jphi, :]) # Do I need to reverse the order of the coefficients?
-        except np.linalg.LinAlgError:
-            raise RuntimeError('Problem with polyroots. coefficients={} lp={} B0={} g0={} g1c={}'.format(coefficients[jphi, :], lp, s.B0, g0, g1c))
+    # Solve for the roots of the quartic polynomial:
+    roots_all = quartic_roots(coefficients[:, ::-1])
 
+    # It should be possible to optimise reducing for loops and using vectorisation
+    for jphi, roots in enumerate(roots_all):
+        # Solve for the roots of the quartic polynomial:
+        # try:
+        #     roots = np.polynomial.polynomial.polyroots(coefficients[jphi, :]) # Do I need to reverse the order of the coefficients?
+        #     roots = np.roots(coefficients[jphi, ::-1])  # More efficient than polyroots
+        #     print(roots)
+        #     input()
+        # except np.linalg.LinAlgError:
+        #     raise RuntimeError('Problem with polyroots. coefficients={} lp={} B0={} g0={} g1c={}'.format(coefficients[jphi, :], lp, s.B0, g0, g1c))
+        
         real_parts = np.real(roots)
         imag_parts = np.imag(roots)
 
-        logger.debug('jphi={} g0={} g1c={} g20={} g2s={} g2c={} K0={} K2s={} K2c={} K4s={} K4c={} coefficients={} real={} imag={}'.format(jphi, g0[jphi], g1c[jphi], g20[jphi], g2s[jphi], g2c[jphi], K0[jphi], K2s[jphi], K2c[jphi], K4s[jphi], K4c[jphi], coefficients[jphi,:], real_parts, imag_parts))
+        # logger.debug('jphi={} g0={} g1c={} g20={} g2s={} g2c={} K0={} K2s={} K2c={} K4s={} K4c={} coefficients={} real={} imag={}'.format(jphi, g0[jphi], g1c[jphi], g20[jphi], g2s[jphi], g2c[jphi], K0[jphi], K2s[jphi], K2c[jphi], K4s[jphi], K4c[jphi], coefficients[jphi,:], real_parts, imag_parts))
 
         # This huge number indicates a true solution has not yet been found.
         rc = 1e+100
@@ -323,14 +331,14 @@ def calculate_r_singularity(self, high_order=False):
 
             # If root is not purely real, skip it.
             if np.abs(imag_parts[jr]) > 1e-7:
-                logger.debug("Skipping root with jr={} since imag part is {}".format(jr, imag_parts[jr]))
+                # logger.debug("Skipping root with jr={} since imag part is {}".format(jr, imag_parts[jr]))
                 continue
 
             sin2theta = real_parts[jr]
 
             # Discard any roots that have magnitude larger than 1. (I'm not sure this ever happens, but check to be sure.)
             if np.abs(sin2theta) > 1:
-                logger.debug("Skipping root with jr={} since sin2theta={}".format(jr, sin2theta))
+                # logger.debug("Skipping root with jr={} since sin2theta={}".format(jr, sin2theta))
                 continue
 
             # Determine varpi by checking which choice gives the smaller residual in the K equation
@@ -366,7 +374,7 @@ def calculate_r_singularity(self, high_order=False):
             else:
                 abs_sintheta = np.sqrt(0.5 * (1 - cos2theta))
                 
-            logger.debug("  jr={}  sin2theta={}  cos2theta={}".format(jr, sin2theta, cos2theta))
+            # logger.debug("  jr={}  sin2theta={}  cos2theta={}".format(jr, sin2theta, cos2theta))
             for varsigma in [-1, 1]:
                 if get_cos_from_cos2:
                     costheta = varsigma * abs_costheta
@@ -374,47 +382,13 @@ def calculate_r_singularity(self, high_order=False):
                 else:
                     sintheta = varsigma * abs_sintheta
                     costheta = sin2theta / (2 * sintheta)
-                logger.debug("    varsigma={}  costheta={}  sintheta={}".format(varsigma, costheta, sintheta))
+                # logger.debug("    varsigma={}  costheta={}  sintheta={}".format(varsigma, costheta, sintheta))
 
                 # Sanity test
                 if np.abs(costheta*costheta + sintheta*sintheta - 1) > 1e-13:
                     msg = "Error! sintheta={} costheta={} jphi={} jr={} sin2theta={} cos2theta={} abs(costheta*costheta + sintheta*sintheta - 1)={}".format(sintheta, costheta, jphi, jr, sin2theta, cos2theta, np.abs(costheta*costheta + sintheta*sintheta - 1))
                     logger.error(msg)
                     raise RuntimeError(msg)
-
-                """
-                # Try to get r using the simpler method, the equation that is linear in r.
-                denominator = 2 * (g2s[jphi] * cos2theta - g2c[jphi] * sin2theta)
-                if np.abs(denominator) > 1e-8:
-                    # This method cannot be used if we would need to divide by 0
-                    rr = g1c[jphi] * sintheta / denominator
-                    residual = g0[jphi] + rr * g1c[jphi] * costheta + rr * rr * (g20[jphi] + g2s[jphi] * sin2theta + g2c[jphi] * cos2theta) # Residual in the equation sqrt(g)=0.
-                    logger.debug("    Linear method: rr={}  residual={}".format(rr, residual))
-                    if (rr>0) and np.abs(residual) < 1e-5:
-                        if rr < rc:
-                            # If this is a new minimum
-                            rc = rr
-                            sintheta_at_rc = sintheta
-                            costheta_at_rc = costheta
-                            logger.debug("      New minimum: rc={}".format(rc))
-                else:
-                    # Use the more complicated method to determine rr by solving a quadratic equation.
-                    quadratic_A = g20[jphi] + g2s[jphi] * sin2theta + g2c[jphi] * cos2theta
-                    quadratic_B = costheta * g1c[jphi]
-                    quadratic_C = g0[jphi]
-                    radical = np.sqrt(quadratic_B * quadratic_B - 4 * quadratic_A * quadratic_C)
-                    for sign_quadratic in [-1, 1]:
-                        rr = (-quadratic_B + sign_quadratic * radical) / (2 * quadratic_A) # This is the quadratic formula.
-                        residual = -g1c[jphi] * sintheta + 2 * rr * (g2s[jphi] * cos2theta - g2c[jphi] * sin2theta) # Residual in the equation d sqrt(g) / d theta = 0.
-                        logger.debug("    Quadratic method: A={} B={} C={} radicand={}, radical={}  rr={}  residual={}".format(quadratic_A, quadratic_B, quadratic_C, quadratic_B * quadratic_B - 4 * quadratic_A * quadratic_C, radical, rr, residual))
-                        if (rr>0) and np.abs(residual) < 1e-5:
-                            if rr < rc:
-                                # If this is a new minimum
-                                rc = rr
-                                sintheta_at_rc = sintheta
-                                costheta_at_rc = costheta
-                                logger.debug("      New minimum: rc={}".format(rc))
-                """
 
                 # Try to get r using the simpler method, the equation that is linear in r.
                 linear_solutions = []
@@ -423,7 +397,7 @@ def calculate_r_singularity(self, high_order=False):
                     # This method cannot be used if we would need to divide by 0
                     rr = (g1c[jphi] * sintheta - g1s[jphi] * costheta) / denominator
                     residual = g0[jphi] + rr * (g1c[jphi] * costheta + g1s[jphi] * sintheta) + rr * rr * (g20[jphi] + g2s[jphi] * sin2theta + g2c[jphi] * cos2theta) # Residual in the equation sqrt(g)=0.
-                    logger.debug("    Linear method: rr={}  residual={}".format(rr, residual))
+                    # logger.debug("    Linear method: rr={}  residual={}".format(rr, residual))
                     if (rr>0) and np.abs(residual) < 1e-5:
                         linear_solutions = [rr]
                         
@@ -436,7 +410,7 @@ def calculate_r_singularity(self, high_order=False):
                 if np.abs(quadratic_A) < 1e-13:
                     rr = -quadratic_C / quadratic_B
                     residual = -g1c[jphi] * sintheta + g1s[jphi] * costheta + 2 * rr * (g2s[jphi] * cos2theta - g2c[jphi] * sin2theta) # Residual in the equation d sqrt(g) / d theta = 0.
-                    logger.debug("    Quadratic method but A is small: A={} rr={}  residual={}".format(quadratic_A, rr, residual))
+                    # logger.debug("    Quadratic method but A is small: A={} rr={}  residual={}".format(quadratic_A, rr, residual))
                     if rr > 0 and np.abs(residual) < 1e-5:
                         quadratic_solutions.append(rr)
                 else:
@@ -447,11 +421,11 @@ def calculate_r_singularity(self, high_order=False):
                         for sign_quadratic in [-1, 1]:
                             rr = (-quadratic_B + sign_quadratic * radical) / (2 * quadratic_A) # This is the quadratic formula.
                             residual = -g1c[jphi] * sintheta + g1s[jphi] * costheta + 2 * rr * (g2s[jphi] * cos2theta - g2c[jphi] * sin2theta) # Residual in the equation d sqrt(g) / d theta = 0.
-                            logger.debug("    Quadratic method: A={} B={} C={} radicand={}, radical={}  rr={}  residual={}".format(quadratic_A, quadratic_B, quadratic_C, quadratic_B * quadratic_B - 4 * quadratic_A * quadratic_C, radical, rr, residual))
+                            # logger.debug("    Quadratic method: A={} B={} C={} radicand={}, radical={}  rr={}  residual={}".format(quadratic_A, quadratic_B, quadratic_C, quadratic_B * quadratic_B - 4 * quadratic_A * quadratic_C, radical, rr, residual))
                             if (rr>0) and np.abs(residual) < 1e-5:
                                 quadratic_solutions.append(rr)
 
-                logger.debug("    # linear solutions={}  # quadratic solutions={}".format(len(linear_solutions), len(quadratic_solutions)))
+                # logger.debug("    # linear solutions={}  # quadratic solutions={}".format(len(linear_solutions), len(quadratic_solutions)))
                 if len(quadratic_solutions) > 1:
                     # Pick the smaller one
                     quadratic_solutions = [np.min(quadratic_solutions)]
@@ -459,7 +433,7 @@ def calculate_r_singularity(self, high_order=False):
                 # If both methods find a solution, check that they agree:
                 if len(linear_solutions) > 0 and len(quadratic_solutions) > 0:
                     diff = np.abs(linear_solutions[0] - quadratic_solutions[0])
-                    logger.debug("  linear solution={}  quadratic solution={}  diff={}".format(linear_solutions[0], quadratic_solutions[0], diff))
+                    # logger.debug("  linear solution={}  quadratic solution={}  diff={}".format(linear_solutions[0], quadratic_solutions[0], diff))
                     # if diff > 1e-5:
                     #     warnings.warn("  Difference between linear solution {} and quadratic solution {} is {}".format(linear_solutions[0], quadratic_solutions[0], diff))
                         
@@ -477,7 +451,7 @@ def calculate_r_singularity(self, high_order=False):
                     rc = rr
                     sintheta_at_rc = sintheta
                     costheta_at_rc = costheta
-                    logger.debug("      New minimum: rc={}".format(rc))
+                    # logger.debug("      New minimum: rc={}".format(rc))
                     
         r_singularity_basic_vs_varphi[jphi] = rc
         #r_singularity_Newton_solve()
@@ -492,6 +466,246 @@ def calculate_r_singularity(self, high_order=False):
     self.r_singularity_theta_vs_varphi = r_singularity_theta_vs_varphi
     self.r_singularity_residual_sqnorm = r_singularity_residual_sqnorm
     
+
+def calculate_r_singularity_opt(self, high_order=False, check = False):
+    """
+    Optimized calculation of r_singularity.
+    """
+
+    s = self
+    
+    X1c, X1s, Y1s, Y1c = s.X1c, s.X1s, s.Y1s, s.Y1c
+    X20, X2s, X2c = s.X20, s.X2s, s.X2c
+    Y20, Y2s, Y2c = s.Y20, s.Y2s, s.Y2c
+    Z20, Z2s, Z2c = s.Z20, s.Z2s, s.Z2c
+
+    lp = np.abs(s.G0) / s.B0
+    curvature, torsion = s.curvature, s.torsion
+    nphi = s.nphi
+
+    d_X1c_d_varphi, d_X1s_d_varphi = s.d_X1c_d_varphi, s.d_X1s_d_varphi
+    d_Y1s_d_varphi, d_Y1c_d_varphi = s.d_Y1s_d_varphi, s.d_Y1c_d_varphi
+    d_X20_d_varphi, d_X2s_d_varphi, d_X2c_d_varphi = s.d_X20_d_varphi, s.d_X2s_d_varphi, s.d_X2c_d_varphi
+    d_Y20_d_varphi, d_Y2s_d_varphi, d_Y2c_d_varphi = s.d_Y20_d_varphi, s.d_Y2s_d_varphi, s.d_Y2c_d_varphi
+    d_Z20_d_varphi, d_Z2s_d_varphi, d_Z2c_d_varphi = s.d_Z20_d_varphi, s.d_Z2s_d_varphi, s.d_Z2c_d_varphi
+
+    r_singularity_basic_vs_varphi = np.zeros(nphi)
+    r_singularity_vs_varphi = np.zeros(nphi)
+    r_singularity_residual_sqnorm = np.zeros(nphi)
+    r_singularity_theta_vs_varphi = np.zeros(nphi)
+    
+    g0 = lp * (X1c * Y1s - X1s * Y1c)
+
+    g1c = lp * (-2*X2s*Y1c + 2*X20*Y1s + 2*X2c*Y1s + 2*X1c*Y2s - X1c**2*Y1s*curvature + \
+                X1s*(-2*Y20 - 2*Y2c + X1c*Y1c*curvature))
+    g1s = lp * (-2*X20*Y1c + 2*X2c*Y1c + 2*X1c*Y20 - 2*X1c*Y2c + 2*X2s*Y1s - 2*X1s*Y2s + \
+                X1s**2*Y1c*curvature - X1c*X1s*Y1s*curvature)
+    g20 = lp * (2*X20*X1s*Y1c*curvature + 2*X1c*X1s*Y2c*curvature - 2*X1c*X20*Y1s*curvature - \
+                X1c**2*Y2s*curvature + X1s**2*Y2s*curvature + X2c*(4*Y2s - (X1s*Y1c + X1c*Y1s)*curvature) + \
+                X2s*(-4*Y2c + (X1c*Y1c - X1s*Y1s)*curvature) + 2*X1c*X1s*Z2c*torsion + \
+                2*Y1c*Y1s*Z2c*torsion - X1c**2*Z2s*torsion + X1s**2*Z2s*torsion - Y1c**2*Z2s*torsion + \
+                Y1s**2*Z2s*torsion) + Y1c*Z2s*d_X1c_d_varphi + Y1c*Z20*d_X1s_d_varphi - Y1c*Z2c*d_X1s_d_varphi +\
+                X1s*Z20*d_Y1c_d_varphi + X1s*Z2c*d_Y1c_d_varphi - X1c*Z2s*d_Y1c_d_varphi - X1c*Z20*d_Y1s_d_varphi + \
+                X1c*Z2c*d_Y1s_d_varphi + X1s*Z2s*d_Y1s_d_varphi - X1s*Y1c*d_Z20_d_varphi - \
+                Y1s*(Z20*d_X1c_d_varphi + Z2c*d_X1c_d_varphi + Z2s*d_X1s_d_varphi - X1c*d_Z20_d_varphi)
+    g2c = -lp * (-2*X2c*X1s*Y1c*curvature - 2*X1c*X1s*Y20*curvature + 2*X1c*X2c*Y1s*curvature + X1c**2*Y2s*curvature +\
+                X1s**2*Y2s*curvature + X20*(-4*Y2s + X1s*Y1c*curvature + X1c*Y1s*curvature) + X2s*(4*Y20 - \
+                (X1c*Y1c + X1s*Y1s)*curvature) - 2*X1c*X1s*Z20*torsion - 2*Y1c*Y1s*Z20*torsion + X1c**2*Z2s*torsion + \
+                X1s**2*Z2s*torsion + Y1c**2*Z2s*torsion + Y1s**2*Z2s*torsion) + Y1c*Z2s*d_X1c_d_varphi - \
+                Y1c*Z20*d_X1s_d_varphi + Y1c*Z2c*d_X1s_d_varphi + X1s*Z20*d_Y1c_d_varphi + X1s*Z2c*d_Y1c_d_varphi - \
+                X1c*Z2s*d_Y1c_d_varphi + X1c*Z20*d_Y1s_d_varphi - X1c*Z2c*d_Y1s_d_varphi - X1s*Z2s*d_Y1s_d_varphi - \
+                X1s*Y1c*d_Z2c_d_varphi + Y1s*(-Z20*d_X1c_d_varphi - Z2c*d_X1c_d_varphi + Z2s*d_X1s_d_varphi + \
+                X1c*d_Z2c_d_varphi)
+    g2s = lp * (2*X1s*X2s*Y1c*curvature - X1c**2*Y20*curvature + X1s**2*Y20*curvature + X1c**2*Y2c*curvature + \
+                X1s**2*Y2c*curvature - 2*X1c*X2s*Y1s*curvature + X20*(-4*Y2c + X1c*Y1c*curvature - X1s*Y1s*curvature) + \
+                X2c*(4*Y20 - (X1c*Y1c + X1s*Y1s)*curvature) - X1c**2*Z20*torsion + X1s**2*Z20*torsion - \
+                Y1c**2*Z20*torsion + Y1s**2*Z20*torsion + X1c**2*Z2c*torsion + X1s**2*Z2c*torsion + \
+                Y1c**2*Z2c*torsion + Y1s**2*Z2c*torsion) - Y1s*Z2s*d_X1c_d_varphi - Y1s*Z20*d_X1s_d_varphi - \
+                Y1s*Z2c*d_X1s_d_varphi - X1c*Z20*d_Y1c_d_varphi + X1c*Z2c*d_Y1c_d_varphi + X1s*Z2s*d_Y1c_d_varphi + \
+                X1s*Z20*d_Y1s_d_varphi + X1s*Z2c*d_Y1s_d_varphi - X1c*Z2s*d_Y1s_d_varphi + X1c*Y1s*d_Z2s_d_varphi + \
+                Y1c*(Z20*d_X1c_d_varphi - Z2c*d_X1c_d_varphi + Z2s*d_X1s_d_varphi - X1s*d_Z2s_d_varphi)
+
+    K0 = 2*(g1c*g1c + g1s*g1s)*g20 - 3*(g1c*g1c - g1s*g1s)*g2c + 8*g0*g2c*g2c + 8*g0*g2s*g2s - 6*g1c*g1s*g2s
+    K2s = 2*(g1c*g1c + g1s*g1s)*g2s - 4*g1s*g1c*g20
+    K2c = -2*(g1c*g1c - g1s*g1s)*g20 + 2*(g1c*g1c + g1s*g1s)*g2c
+    K4s = (g1c*g1c - g1s*g1s)*g2s - 16*g0*g2c*g2s + 2*g1c*g1s*g2c
+    K4c = (g1c*g1c - g1s*g1s)*g2c - 8*g0*g2c*g2c + 8*g0*g2s*g2s - 2*g1s*g1c*g2s
+
+    coefficients = np.zeros((nphi, 5))
+    coefficients[:, 4] = 4*(K4c*K4c + K4s*K4s)
+    coefficients[:, 3] = 4*(K4s*K2c - K2s*K4c)
+    coefficients[:, 2] = K2s*K2s + K2c*K2c - 4*K0*K4c - 4*K4c*K4c - 4*K4s*K4s
+    coefficients[:, 1] = 2*K0*K2s + 2*K4c*K2s - 4*K4s*K2c
+    coefficients[:, 0] = (K0 + K4c)*(K0 + K4c) - K2c*K2c
+
+    roots_all = quartic_roots(coefficients[:, ::-1])
+    real_parts_all = np.real(roots_all)
+    imag_parts_all = np.imag(roots_all)
+
+    sin2theta = real_parts_all
+
+    # Check real roots in the range [-1, 1]
+    flag = np.logical_and(np.abs(imag_parts_all) < 1e-7, np.abs(real_parts_all) <= 1)
+
+    # Apply or operation to the columns of the flag array, to eliminate phi values not working
+    flag_red = np.logical_or.reduce(flag, axis = 1)
+    flag = flag[flag_red, :]
+    sin2theta = sin2theta[flag_red, :]
+
+    # Compute cos2theta only for appropriate ones
+    cos2theta = np.empty_like(sin2theta)
+    cos2theta[flag] = np.sqrt(1 - sin2theta[flag]**2)
+
+    # Compute the appropriate sign for the cosine
+    def select_relevant_1d(arr, flag = flag):
+        """
+        Select and flattens the relevant values of arr. It assumes we have flag_red and flag readily available (if not provided).
+        Args:
+            arr: 1D array
+            flag: 2D array Boolean
+        Returns:
+            1D array
+        """
+        # Exploit broadcast
+        return np.broadcast_to(arr[flag_red][:,np.newaxis], flag.shape)[flag]
+    
+    flag_sign = np.full_like(flag, False); residual_if_varpi_plus = np.empty_like(sin2theta); residual_if_varpi_minus = np.empty_like(sin2theta)
+    residual_if_varpi_plus[flag]  = select_relevant_1d(K0) + select_relevant_1d(K2s) * sin2theta[flag] + \
+                                    select_relevant_1d(K4c) * (1 - 2 * sin2theta[flag] * sin2theta[flag])
+    residual_if_varpi_minus[flag] = select_relevant_1d(K2c) * cos2theta[flag] + select_relevant_1d(K4s) * 2 * \
+                                    sin2theta[flag] * cos2theta[flag]
+    flag_sign[flag] = np.greater(np.abs(residual_if_varpi_plus[flag] + residual_if_varpi_minus[flag]), \
+                                 np.abs(residual_if_varpi_plus[flag] - residual_if_varpi_minus[flag]))
+    cos2theta[flag_sign] = -cos2theta[flag_sign]
+
+    # Flag where cos is positive
+    flag_unsign = np.full_like(flag, False)
+    flag_unsign[flag] = np.logical_and(np.logical_not(flag_sign[flag]), flag[flag])
+
+    # Compute the r solutions for each sign
+    r_solutions = np.full((2, nphi), np.nan)
+    for j_sign, varsigma in enumerate([-1, 1]):
+        # Compute the simple angled trig functions
+        costheta = np.empty_like(sin2theta); sintheta = np.empty_like(sin2theta)
+        # Case #1: unsigned
+        costheta[flag_unsign] = varsigma * np.sqrt(0.5*(1 + cos2theta[flag_unsign]))
+        sintheta[flag_unsign] = sin2theta[flag_unsign] / (2 * costheta[flag_unsign])
+        # Case #2: signed
+        sintheta[flag_sign] = varsigma * np.sqrt(0.5*(1 - cos2theta[flag_sign]))
+        costheta[flag_sign] = sin2theta[flag_sign] / (2 * sintheta[flag_sign])
+
+        # Check the trigonometric identity
+        if np.any(np.abs(costheta[flag]*costheta[flag] + sintheta[flag]*sintheta[flag] - 1) > 1e-13):
+            msg = "Error! sintheta={} costheta={} sin2theta={} cos2theta={}".format(sintheta, costheta, sin2theta, cos2theta)
+            logger.error(msg)
+            raise RuntimeError(msg)
+        
+        # Compute the linear solutions
+        linear_solutions = np.full_like(sin2theta, np.nan); flag_linear = np.full_like(flag, False); flag_pos = np.full_like(flag, False)
+        denominator = 2 * (select_relevant_1d(g2s) * cos2theta[flag] - select_relevant_1d(g2c) * sin2theta[flag])
+        flag_linear_flat = np.abs(denominator) > 1e-8
+        flag_linear[flag] = flag_linear_flat
+        rr = (select_relevant_1d(g1c, flag_linear) * sintheta[flag_linear] - \
+                                        select_relevant_1d(g1s, flag_linear) * costheta[flag_linear]) / denominator[flag_linear_flat]
+        
+        flag_linear_flat = rr > 0
+        flag_linear[flag_linear] = flag_linear_flat
+        rr = rr[flag_linear_flat]
+        residual = select_relevant_1d(g0, flag_linear) + \
+                rr * (select_relevant_1d(g1c, flag_linear) * costheta[flag_linear] + \
+                select_relevant_1d(g1s, flag_linear) * sintheta[flag_linear]) + rr**2 * \
+                (select_relevant_1d(g20, flag_linear) + select_relevant_1d(g2s, flag_linear) * sin2theta[flag_linear] + \
+                select_relevant_1d(g2c, flag_linear) * cos2theta[flag_linear])   
+        
+        flag_linear_flat = np.abs(residual) < 1e-5
+        flag_linear[flag_linear] = flag_linear_flat
+        linear_solutions[flag_linear] = rr[flag_linear_flat]
+                                
+        # Compute the quadratic solutions
+        quadratic_solutions = np.full_like(sin2theta, np.nan)
+        quadratic_A = select_relevant_1d(g20) + select_relevant_1d(g2s) * sin2theta[flag] + select_relevant_1d(g2c) * cos2theta[flag]
+        quadratic_B = costheta[flag] * select_relevant_1d(g1c) + sintheta[flag] * select_relevant_1d(g1s)
+        quadratic_C = select_relevant_1d(g0)
+        radicand = quadratic_B * quadratic_B - 4 * quadratic_A * quadratic_C
+
+        # Linear subcase
+        flag_linear = np.full_like(flag, False); flag_pos = np.full_like(flag, False); flag_neg = np.full_like(flag, False)
+        flag_linear[flag] = np.abs(quadratic_A) < 1e-13;  flag_linear_flat = flag_linear[flag]
+        quadratic_solutions[flag_linear] = -quadratic_C[flag_linear_flat] / quadratic_B[flag_linear_flat]
+        flag_pos[flag_linear] = quadratic_solutions[flag_linear] > 0
+        residual = -select_relevant_1d(g1c, flag_pos) * sintheta[flag_pos] + select_relevant_1d(g1s, flag_pos) * costheta[flag_pos] + \
+                2 * quadratic_solutions[flag_pos] * (select_relevant_1d(g2s,flag_pos) * cos2theta[flag_pos] - \
+                select_relevant_1d(g2c,flag_pos) * sin2theta[flag_pos])  
+        flag_pos[flag_pos] = np.abs(residual) < 1e-5
+        flag_neg[flag_linear] = np.logical_not(flag_pos[flag_linear])
+        quadratic_solutions[flag_neg] = np.nan
+
+        # Quadratic subcase
+        flag_quadratic = np.full_like(flag, False); flag_pos = np.full_like(flag, False); flag_pos2 = np.full_like(flag, False); flag_neg = np.full_like(flag, False)
+        flag_quadratic[flag] = np.logical_and(np.logical_not(flag_linear[flag]), radicand >= 0)
+        flag_quadratic_flat = flag_quadratic[flag]
+        radical = np.sqrt(radicand[flag_quadratic_flat])
+
+        sign_quadratic = -1
+        temp = (-quadratic_B[flag_quadratic_flat] + sign_quadratic * radical) / (2 * quadratic_A[flag_quadratic_flat])
+        flag_pos[flag_quadratic] = temp > 0
+        residual = -select_relevant_1d(g1c, flag_pos) * sintheta[flag_pos] + \
+                select_relevant_1d(g1s, flag_pos) * costheta[flag_pos] + \
+                2 * temp[flag_pos[flag_quadratic]] * (select_relevant_1d(g2s, flag_pos) * cos2theta[flag_pos] - \
+                select_relevant_1d(g2c, flag_pos) * sin2theta[flag_pos])
+        flag_pos[flag_pos] = np.abs(residual) < 1e-5
+        flag_neg[flag_quadratic] = np.logical_not(flag_pos[flag_quadratic])
+        quadratic_solutions[flag_pos] = temp[flag_pos[flag_quadratic]]
+
+        sign_quadratic = 1
+        quadratic_solutions_sgn = (-quadratic_B[flag_quadratic_flat] + sign_quadratic * radical) / (2 * quadratic_A[flag_quadratic_flat])
+        flag_pos2_flat = quadratic_solutions_sgn > 0
+        quadratic_solutions_sgn = quadratic_solutions_sgn[flag_pos2_flat]
+        flag_pos2[flag_quadratic] = flag_pos2_flat
+        residual = -select_relevant_1d(g1c, flag_pos2) * sintheta[flag_pos2] + \
+                select_relevant_1d(g1s, flag_pos2) * costheta[flag_pos2] + \
+                2 * quadratic_solutions_sgn * (select_relevant_1d(g2s, flag_pos2) * cos2theta[flag_pos2] - \
+                select_relevant_1d(g2c, flag_pos2) * sin2theta[flag_pos2])
+        flag_pos2_flat = np.abs(residual) < 1e-5
+        flag_pos2[flag_pos2] = flag_pos2_flat
+        quadratic_solutions_sgn = quadratic_solutions_sgn[flag_pos2_flat]
+        quadratic_solutions[flag_pos2][np.isnan(quadratic_solutions[flag_pos2])] = quadratic_solutions_sgn
+        flag_new = np.full_like(flag, False)
+        flag_new[flag_pos2] = np.logical_and(flag_pos2[flag_pos2], np.greater(quadratic_solutions[flag_pos2], quadratic_solutions_sgn))
+        quadratic_solutions[flag_new] = quadratic_solutions_sgn[flag_new[flag_pos2]]
+
+        # When quadratic is np.nan, check if linear has some value
+        temp = np.logical_and(np.isnan(quadratic_solutions), ~np.isnan(linear_solutions))
+        quadratic_solutions[temp] = linear_solutions[temp]
+
+        # Select per phi the minimum value
+        with warnings.catch_warnings(): 
+            warnings.simplefilter('ignore', category = RuntimeWarning)
+            r_solutions[j_sign, flag_red] = np.nanmin(quadratic_solutions, axis = 1)
+                
+    # Reduce once again to the minimum value, this time over the sign
+    with warnings.catch_warnings(): 
+        warnings.simplefilter('ignore', category = RuntimeWarning)
+        r_solutions = np.nanmin(r_solutions, axis = 0)
+
+    # Make nan's a large number
+    r_max = 1e100
+    r_solutions[np.isnan(r_solutions)] = r_max
+
+    if check:
+        # Call the original routine 
+        self.calculate_r_singularity()
+
+        # Compare the results
+        assert np.allclose(r_solutions, self.r_singularity_vs_varphi), "r_solutions={} self.r_singularity_vs_varphi={}".format(r_solutions, self.r_singularity_vs_varphi)
+        assert np.allclose(1 / r_solutions, self.inv_r_singularity_vs_varphi), "1 / r_solutions={} self.inv_r_singularity_vs_varphi={}".format(1 / r_solutions, self.inv_r_singularity_vs_varphi)
+        assert np.nanmin(r_solutions) == self.r_singularity, "r_solutions.min()={} self.r_singularity={}".format(np.nanmin(r_solutions), self.r_singularity)
+
+    # Store the results
+    self.r_singularity_vs_varphi = r_solutions
+    self.inv_r_singularity_vs_varphi = 1 / r_solutions
+    self.r_singularity = np.min(r_solutions)    
+
 """
   call cpu_time(end_time)
   if (verbose) print "(a,es11.4,a,es10.3,a)"," r_singularity:",r_singularity,"  Time to compute:",end_time - r_singularity_start_time," sec."

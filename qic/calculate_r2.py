@@ -7,11 +7,12 @@ import numpy as np
 from .util import mu0
 from .optimize_nae import min_geo_qi_consistency
 from .spectral_diff_matrix import spectral_diff_matrix_extended
+from scipy.sparse.linalg import cg
 
 #logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-def calculate_r2(self):
+def calculate_r2(self, no_rc = False, no_interp = False):
     """
     Compute the O(r^2) quantities.
     """
@@ -57,68 +58,74 @@ def calculate_r2(self):
         d_d_varphi_ext = self.d_d_varphi.copy()
         self.d_d_varphi_ext = d_d_varphi_ext
 
-    ##############
-    # COMPUTE G2 #
-    ##############
-    # The expression can be found in Eq.(A50) in [Landreman, Sengupta (2019)]
-    # Part I: ∫dφ/B0**2/(2π/N) with the integral being over varphi in a period. Could do a sum in the 
-    # regular phi grid using dφ = (dφ/dφ_c) dφ_c = dφ_c (dl/dφ_c)/(dl/dφ) 
-    average_one_over_B0_squared_over_varphi = np.trapz(np.append(1 / (B0 * B0), 1 / (B0[0] * B0[0])), \
-                                                       np.append(self.varphi, self.varphi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
-    # average_one_over_B0_squared_over_varphi = np.sum(1 / (B0 * B0)) / nphi
+    if not p2 == 0:
+        ##############
+        # COMPUTE G2 #
+        ##############
+        # The expression can be found in Eq.(A50) in [Landreman, Sengupta (2019)]
+        # Part I: ∫dφ/B0**2/(2π/N) with the integral being over varphi in a period. Could do a sum in the 
+        # regular phi grid using dφ = (dφ/dφ_c) dφ_c = dφ_c (dl/dφ_c)/(dl/dφ) 
+        average_one_over_B0_squared_over_varphi = np.trapz(np.append(1 / (B0 * B0), 1 / (B0[0] * B0[0])), \
+                                                        np.append(self.varphi, self.varphi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
+        # average_one_over_B0_squared_over_varphi = np.sum(1 / (B0 * B0)) / nphi
 
-    # Put all pieces together, Eq.(A50) in [Landreman, Sengupta (2019)] 
-    G2 = -mu0 * p2 * G0 * average_one_over_B0_squared_over_varphi - iota * I2
+        # Put all pieces together, Eq.(A50) in [Landreman, Sengupta (2019)] 
+        G2 = -mu0 * p2 * G0 * average_one_over_B0_squared_over_varphi - iota * I2
 
-    ################
-    # CALCULATE β0 #
-    ################
-    # We need to compute the form of β0 from equilibrium, as given in Eq.(A51) in [Landreman, Sengupta (2019)]
-    # Part I: rhs of the equation, β0' = rhs
-    rhs_beta_0_equation = 2 * mu0 * p2 * G0 / Bbar * (1/(B0 * B0) - average_one_over_B0_squared_over_varphi)
-    # Integrate in varphi to obtain β0 
-    if np.all(np.equal(rhs_beta_0_equation, 0)):
-        # If rhs = 0, then set β0 = 0 (choice of integration constant)
-        beta_0 = np.zeros(nphi)
+        ################
+        # CALCULATE β0 #
+        ################
+        # We need to compute the form of β0 from equilibrium, as given in Eq.(A51) in [Landreman, Sengupta (2019)]
+        # Part I: rhs of the equation, β0' = rhs
+        rhs_beta_0_equation = 2 * mu0 * p2 * G0 / Bbar * (1/(B0 * B0) - average_one_over_B0_squared_over_varphi)
+        # Integrate in varphi to obtain β0 
+        if np.all(np.equal(rhs_beta_0_equation, 0)):
+            # If rhs = 0, then set β0 = 0 (choice of integration constant)
+            beta_0 = np.zeros(nphi)
+        else:
+            # If rhs ≠ 0 then compute the integration. Choose β0(φ=0) = 0 as integration condition.
+            beta_0 = np.linalg.solve(d_d_varphi + self.interpolateTo0, rhs_beta_0_equation)
+
+        ################
+        # CALCULATE β1 #
+        ################
+        # To calculate β1 we need to solve the equilibrium condition Eq.(A52) from [Landreman, Sengupta (2019)]
+        # but separated into the sine/cosine parts in χ: (d/dφ + ι_Ν d/dχ)β_1 = -4 μ0 p2 G0 B1 / Bbar B0**3
+        # Want to construct like a linear system and solve for (β1c,β1s): we need
+        # (i) the differential operator matrix
+        matrix_beta_1 = np.zeros((2 * nphi, 2 * nphi))
+        # (ii) the rhs of the equation
+        rhs_beta_1 = np.zeros(2 * nphi)
+
+        ## Construct differential matrices, (i) ##
+        for j in range(nphi):
+            # Differential operation in φ : if the field is half-helicity, then β_1c and β_1s are half-periodic, 
+            # so need extended diff matrix
+            matrix_beta_1[j, 0:nphi] = d_d_varphi_ext[j, :]  # Terms involving beta_1c
+            matrix_beta_1[j+nphi, nphi:(2*nphi)] = d_d_varphi_ext[j, :]  # Terms involving beta_1s
+
+            # Differential operation in χ: did is not differential in φ, but differential in χ crosses sin/cos
+            matrix_beta_1[j, j + nphi] = matrix_beta_1[j, j + nphi] + iota_N  # Terms involving beta_1s
+            matrix_beta_1[j + nphi, j] = matrix_beta_1[j + nphi, j] - iota_N  # Terms involving beta_1c
+
+        ## Construct rhs of equation, (ii) ##
+        temp = -4 * mu0 * p2 * G0 / (Bbar * B0 * B0 * B0)
+        rhs_beta_1[0:nphi] = B1c * temp           # cos component
+        rhs_beta_1[nphi:2 * nphi] = B1s * temp    # sin component
+
+        ## Solve for β1: invert the linear system ## 
+        solution_beta_1 = np.linalg.solve(matrix_beta_1, rhs_beta_1)   
+        # For this inversion to be well posed, we need ιN ≠ 0 so that the singularity of inverting d_d_varphi is avoided
+        if np.abs(iota_N) < 1e-8:
+            print('Warning: |iota_N| is very small so O(r^2) solve will be poorly conditioned. iota_N=', iota_N)
+        # Separate the cos/sin components
+        beta_1c = solution_beta_1[0:nphi]
+        beta_1s = solution_beta_1[nphi:2 * nphi]
     else:
-        # If rhs ≠ 0 then compute the integration. Choose β0(φ=0) = 0 as integration condition.
-        beta_0 = np.linalg.solve(d_d_varphi + self.interpolateTo0, rhs_beta_0_equation)
-
-    ################
-    # CALCULATE β1 #
-    ################
-    # To calculate β1 we need to solve the equilibrium condition Eq.(A52) from [Landreman, Sengupta (2019)]
-    # but separated into the sine/cosine parts in χ: (d/dφ + ι_Ν d/dχ)β_1 = -4 μ0 p2 G0 B1 / Bbar B0**3
-    # Want to construct like a linear system and solve for (β1c,β1s): we need
-    # (i) the differential operator matrix
-    matrix_beta_1 = np.zeros((2 * nphi, 2 * nphi))
-    # (ii) the rhs of the equation
-    rhs_beta_1 = np.zeros(2 * nphi)
-
-    ## Construct differential matrices, (i) ##
-    for j in range(nphi):
-        # Differential operation in φ : if the field is half-helicity, then β_1c and β_1s are half-periodic, 
-        # so need extended diff matrix
-        matrix_beta_1[j, 0:nphi] = d_d_varphi_ext[j, :]  # Terms involving beta_1c
-        matrix_beta_1[j+nphi, nphi:(2*nphi)] = d_d_varphi_ext[j, :]  # Terms involving beta_1s
-
-        # Differential operation in χ: did is not differential in φ, but differential in χ crosses sin/cos
-        matrix_beta_1[j, j + nphi] = matrix_beta_1[j, j + nphi] + iota_N  # Terms involving beta_1s
-        matrix_beta_1[j + nphi, j] = matrix_beta_1[j + nphi, j] - iota_N  # Terms involving beta_1c
-
-    ## Construct rhs of equation, (ii) ##
-    temp = -4 * mu0 * p2 * G0 / (Bbar * B0 * B0 * B0)
-    rhs_beta_1[0:nphi] = B1c * temp           # cos component
-    rhs_beta_1[nphi:2 * nphi] = B1s * temp    # sin component
-
-    ## Solve for β1: invert the linear system ## 
-    solution_beta_1 = np.linalg.solve(matrix_beta_1, rhs_beta_1)   
-    # For this inversion to be well posed, we need ιN ≠ 0 so that the singularity of inverting d_d_varphi is avoided
-    if np.abs(iota_N) < 1e-8:
-        print('Warning: |iota_N| is very small so O(r^2) solve will be poorly conditioned. iota_N=', iota_N)
-    # Separate the cos/sin components
-    beta_1c = solution_beta_1[0:nphi]
-    beta_1s = solution_beta_1[nphi:2 * nphi]
+        G2 = - iota * I2
+        beta_0 = np.zeros(nphi)
+        beta_1c = np.zeros(nphi)
+        beta_1s = np.zeros(nphi)
 
     ################
     # CALCULATE Z2 #
@@ -268,40 +275,40 @@ def calculate_r2(self):
 
     # We shall now place the above in a matrix form and include the derivative terms
     matrix = np.zeros((2 * nphi, 2 * nphi))
-    right_hand_side = np.zeros(2 * nphi)
-    for j in range(nphi):
-        # The system of equations involves two: Eqs.(A41-42) in [Landreman, Sengupta (2019)] which we call I and II respectively
-        
-        ## Equation I ##
-        # NOTE: important to note here that d_d_varphi_ext to the right is actually including derivative of what is to be multiplied
-        # by the matrix to the right, but also the pieces sharing the second dimension of d_d_varphi_ext. Need to use extended domain
-        # to correctly deal with the half helicity cases
 
-        # Include the dX20/dφ terms: contributions arise from -X1s * fX0 + Y1c * fYs - Y1s * fYc.
-        matrix[j, 0:nphi] = (-X1s[j] + Y1c[j] * Y2s_from_X20 - Y1s[j] * Y2c_from_X20) * d_d_varphi_ext[j, :]
-        # Include the dY20/dφ terms: contributions arise from  -Y1s * fY0 + Y1c * fYs - Y1s * fYc
-        matrix[j, nphi:(2*nphi)] = (-Y1s[j] - Y1s[j] * Y2c_from_Y20 + Y1c[j] * Y2s_from_Y20) * d_d_varphi_ext[j, :]
-        # Include the explicit X20 terms
-        matrix[j, j] = matrix[j, j] - X1s[j] * fX0_from_X20[j] + X1c[j] * fXs_from_X20[j] - X1s[j] * fXc_from_X20[j] - \
-                                      Y1s[j] * fY0_from_X20[j] + Y1c[j] * fYs_from_X20[j] - Y1s[j] * fYc_from_X20[j]
-        # Include the explicit X20 terms
-        matrix[j, j + nphi] = matrix[j, j + nphi] - X1s[j] * fX0_from_Y20[j] + X1c[j] * fXs_from_Y20[j] - X1s[j] * fXc_from_Y20[j] - \
-                                                    Y1s[j] * fY0_from_Y20[j] + Y1c[j] * fYs_from_Y20[j] - Y1s[j] * fYc_from_Y20[j]
+    # The system of equations involves two: Eqs.(A41-42) in [Landreman, Sengupta (2019)] which we call I and II respectively
+    ## Equation I ##
+    # NOTE: important to note here that d_d_varphi_ext to the right is actually including derivative of what is to be multiplied
+    # by the matrix to the right, but also the pieces sharing the second dimension of d_d_varphi_ext. Need to use extended domain
+    # to correctly deal with the half helicity cases
+    # Include the dX20/dφ terms: contributions arise from -X1s * fX0 + Y1c * fYs - Y1s * fYc.
+    matrix[:nphi,:nphi] = (-X1s[:,None] + Y1c[:,None] * Y2s_from_X20[None,:] - Y1s[:,None] * Y2c_from_X20[None,:]) * d_d_varphi_ext
+    # Include the dY20/dφ terms: contributions arise from  -Y1s * fY0 + Y1c * fYs - Y1s * fYc
+    matrix[:nphi, nphi:] = (-Y1s[:,None] - Y1s[:,None] * Y2c_from_Y20[None,:] + Y1c[:,None] * Y2s_from_Y20[None,:]) * d_d_varphi_ext
+    # Include the explicit X20 terms
+    j = np.arange(nphi)
+    matrix[j, j] += - X1s * fX0_from_X20 + X1c * fXs_from_X20 - X1s * fXc_from_X20 - \
+                                    Y1s * fY0_from_X20 + Y1c * fYs_from_X20 - Y1s * fYc_from_X20
+    # Include the explicit X20 terms
+    matrix[j, j+nphi] += - X1s * fX0_from_Y20 + X1c * fXs_from_Y20 - X1s * fXc_from_Y20 - \
+                                                Y1s * fY0_from_Y20 + Y1c * fYs_from_Y20 - Y1s * fYc_from_Y20
 
-        ## Equation II ##
-        # Include the explict dX20/dφ terms: contributions arise from -X1c * fX0 + Y1s * fYs + Y1c * fYc
-        matrix[j+nphi, 0:nphi] = (-X1c[j] + Y1s[j] * Y2s_from_X20 + Y1c[j] * Y2c_from_X20) * d_d_varphi_ext[j, :]
-        # Include the explicit dY20/dφ terms: contributions arise from -Y1c * fY0 + Y1s * fYs + Y1c * fYc
-        matrix[j+nphi, nphi:(2*nphi)] = (-Y1c[j] + Y1s[j] * Y2s_from_Y20 + Y1c[j] * Y2c_from_Y20) * d_d_varphi_ext[j, :]
-        # Include the explicit X20 terms
-        matrix[j + nphi, j] = matrix[j + nphi, j] - X1c[j] * fX0_from_X20[j] + X1s[j] * fXs_from_X20[j] + X1c[j] * fXc_from_X20[j] -\
-                                                    Y1c[j] * fY0_from_X20[j] + Y1s[j] * fYs_from_X20[j] + Y1c[j] * fYc_from_X20[j]
-        # Include the explicit Y20 terms
-        matrix[j + nphi, j + nphi] = matrix[j + nphi, j + nphi] - X1c[j] * fX0_from_Y20[j] + X1s[j] * fXs_from_Y20[j] + \
-                                                                  X1c[j] * fXc_from_Y20[j] - Y1c[j] * fY0_from_Y20[j] + \
-                                                                  Y1s[j] * fYs_from_Y20[j] + Y1c[j] * fYc_from_Y20[j]
-
+    ## Equation II ##
+    # Include the explict dX20/dφ terms: contributions arise from -X1c * fX0 + Y1s * fYs + Y1c * fYc
+    matrix[nphi:, :nphi] = (-X1c[:,None] + Y1s[:,None] * Y2s_from_X20[None,:] + Y1c[:,None] * Y2c_from_X20[None,:]) * d_d_varphi_ext
+    # Include the explicit dY20/dφ terms: contributions arise from -Y1c * fY0 + Y1s * fYs + Y1c * fYc
+    matrix[nphi:, nphi:] = (-Y1c[:,None] + Y1s[:,None] * Y2s_from_Y20[None,:] + Y1c[:,None] * Y2c_from_Y20[None,:]) * d_d_varphi_ext
+    # Include the explicit X20 terms
+    matrix[j+nphi, j] += - X1c * fX0_from_X20 + X1s * fXs_from_X20 + X1c * fXc_from_X20 -\
+                                                Y1c * fY0_from_X20 + Y1s * fYs_from_X20 + Y1c * fYc_from_X20
+    # Include the explicit Y20 terms
+    matrix[j+nphi, j+nphi] += - X1c * fX0_from_Y20 + X1s * fXs_from_Y20 + \
+                                                                X1c * fXc_from_Y20 - Y1c * fY0_from_Y20 + \
+                                                                Y1s * fYs_from_Y20 + Y1c * fYc_from_Y20
+    
+    
     # Construct the rhs (X20 and Y20 independent terms) with inhomogeneous terms
+    right_hand_side = np.zeros(2 * nphi)
     # Equation I: from Eq.(A41) in [Landreman, Sengupta (2019)]
     right_hand_side[0:nphi] = -(-X1s * fX0_inhomogeneous + X1c * fXs_inhomogeneous - X1s * fXc_inhomogeneous - \
                                  Y1s * fY0_inhomogeneous + Y1c * fYs_inhomogeneous - Y1s * fYc_inhomogeneous)
@@ -309,6 +316,8 @@ def calculate_r2(self):
     right_hand_side[nphi:2 * nphi] = -(- X1c * fX0_inhomogeneous + X1s * fXs_inhomogeneous + X1c * fXc_inhomogeneous - \
                                          Y1c * fY0_inhomogeneous + Y1s * fYs_inhomogeneous + Y1c * fYc_inhomogeneous)
     # Solve for unknowns (X20, Y20)
+    matrix = np.ascontiguousarray(matrix)
+    right_hand_side = np.ascontiguousarray(right_hand_side)
     solution = np.linalg.solve(matrix, right_hand_side)
     X20 = solution[0:nphi]
     Y20 = solution[nphi:2 * nphi]
@@ -363,25 +372,26 @@ def calculate_r2(self):
     self.Z2s = Z2s
     self.Z2c = Z2c
 
-    # Some intermediate quantities
-    self.V1 = V1
-    self.V2 = V2
-    self.V3 = V3
+    if self.solve_extras:
+        # Some intermediate quantities
+        self.V1 = V1
+        self.V2 = V2
+        self.V3 = V3
 
-    # Additional derived quantities (X2x and Y2x live in the extended domain, in order to handle half helicity)
-    self.d_X20_d_varphi = np.matmul(d_d_varphi_ext, X20)
-    self.d_X2s_d_varphi = np.matmul(d_d_varphi_ext, X2s)
-    self.d_X2c_d_varphi = np.matmul(d_d_varphi_ext, X2c)
-    self.d_Y20_d_varphi = np.matmul(d_d_varphi_ext, Y20)
-    self.d_Y2s_d_varphi = np.matmul(d_d_varphi_ext, Y2s)
-    self.d_Y2c_d_varphi = np.matmul(d_d_varphi_ext, Y2c)
-    self.d_Z20_d_varphi = np.matmul(d_d_varphi, Z20)
-    self.d_Z2s_d_varphi = np.matmul(d_d_varphi, Z2s)
-    self.d_Z2c_d_varphi = np.matmul(d_d_varphi, Z2c)
-    self.d2_X1s_d_varphi2 = np.matmul(d_d_varphi, self.d_X1s_d_varphi)
-    self.d2_X1c_d_varphi2 = np.matmul(d_d_varphi, self.d_X1c_d_varphi)
-    self.d2_Y1c_d_varphi2 = np.matmul(d_d_varphi, self.d_Y1c_d_varphi)
-    self.d2_Y1s_d_varphi2 = np.matmul(d_d_varphi, self.d_Y1s_d_varphi)
+        # Additional derived quantities (X2x and Y2x live in the extended domain, in order to handle half helicity)
+        self.d_X20_d_varphi = np.matmul(d_d_varphi_ext, X20)
+        self.d_X2s_d_varphi = np.matmul(d_d_varphi_ext, X2s)
+        self.d_X2c_d_varphi = np.matmul(d_d_varphi_ext, X2c)
+        self.d_Y20_d_varphi = np.matmul(d_d_varphi_ext, Y20)
+        self.d_Y2s_d_varphi = np.matmul(d_d_varphi_ext, Y2s)
+        self.d_Y2c_d_varphi = np.matmul(d_d_varphi_ext, Y2c)
+        self.d_Z20_d_varphi = np.matmul(d_d_varphi, Z20)
+        self.d_Z2s_d_varphi = np.matmul(d_d_varphi, Z2s)
+        self.d_Z2c_d_varphi = np.matmul(d_d_varphi, Z2c)
+        self.d2_X1s_d_varphi2 = np.matmul(d_d_varphi, self.d_X1s_d_varphi)
+        self.d2_X1c_d_varphi2 = np.matmul(d_d_varphi, self.d_X1c_d_varphi)
+        self.d2_Y1c_d_varphi2 = np.matmul(d_d_varphi, self.d_Y1c_d_varphi)
+        self.d2_Y1s_d_varphi2 = np.matmul(d_d_varphi, self.d_Y1s_d_varphi)
 
     # Save untwisted X,Y and Z
     self.X20_untwisted = self.X20
@@ -422,30 +432,36 @@ def calculate_r2(self):
         #    = B20 + B2c   cos[2*(θ-Nφ)]   + B2s   sin[2*(θ-Nφ)]
 
         # Compute helical angle = Nφ-α
-        angle = - self.alpha + (-self.helicity * self.nfp * self.varphi) 
+        # angle = - self.alpha + (-self.helicity * self.nfp * self.varphi) 
+        angle = iota_N*(self.varphi - np.pi/self.nfp) - self.helicity*np.pi
         # Apply multiple angle trigonometric formulas
-        self.B2cQI = self.B2c * np.cos(2*angle) - self.B2s * np.sin(2*angle)
-        self.B2sQI = self.B2s * np.cos(2*angle) + self.B2c * np.sin(2*angle)
+        self.B2cQI = - self.B2c * np.cos(2*angle) - self.B2s * np.sin(2*angle)
+        self.B2sQI = - self.B2s * np.cos(2*angle) + self.B2c * np.sin(2*angle)
         # Construct splines
-        self.B2cQI_spline = self.convert_to_spline(self.B2cQI, varphi = False)
-        self.B2sQI_spline = self.convert_to_spline(self.B2sQI, varphi = False)
+        self.B2cQI_spline = self.convert_to_spline(self.B2cQI, varphi = False, periodic = False)
+        self.B2sQI_spline = self.convert_to_spline(self.B2sQI, varphi = False, periodic = False)
 
         # Compute some derived quantities
+        
         d_B0_d_varphi = np.matmul(self.d_d_varphi, self.B0)
         d_d_d_varphi = np.matmul(self.d_d_varphi_ext, self.d)
         d_2_B0_d_varphi2 = np.matmul(self.d_d_varphi, d_B0_d_varphi)
 
         ## Ideal stellarator symmetric QI at 2nd order ##
         # Ideal B2cQI value
+        alpha_buf_per = self.alpha_buf + self.iotaN * (self.varphi - np.pi/self.nfp)
+        d_alpha_buf_d_varphi = np.matmul(d_d_varphi, alpha_buf_per) - self.iotaN
         self.B2cQI_ideal = (self.d * self.B0 / d_B0_d_varphi / d_B0_d_varphi /4) * (2*d_B0_d_varphi * \
-                            (self.d*d_B0_d_varphi+self.B0*d_d_d_varphi) - self.B0*self.d*d_2_B0_d_varphi2)
+                            (self.d*d_B0_d_varphi+self.B0*d_d_d_varphi) - self.B0*self.d*d_2_B0_d_varphi2) * np.cos(2*self.alpha_buf) - \
+                            (self.d *self.d * self.B0 * self.B0 / d_B0_d_varphi /2)*np.sin(2*self.alpha_buf) * d_alpha_buf_d_varphi
+        
         self.B2cQI_ideal_spline = self.convert_to_spline(self.B2cQI_ideal, varphi = False)  # Make spline
         # Compute non-QI parts of B2: B20 should be even
-        self.B20QI_deviation = self.B20_spline(self.phi) - self.B20_spline(-self.phi)   # B20(φ) = B20(-φ)
+        self.B20QI_deviation = self.B20_spline(self.phi) - self.B20_spline(2*np.pi/self.nfp-self.phi)   # B20(φ) = B20(-φ)
         # B2c should match the ideal value
         self.B2cQI_deviation = self.B2cQI_spline(self.phi) - self.B2cQI_ideal_spline(self.phi) # B2c(φ) = (1/4)*(B0^2 d^2 / B0')'
         # B2s should be odd
-        self.B2sQI_deviation = self.B2sQI_spline(self.phi) + self.B2sQI_spline(-self.phi) # B2s(φ) =-B2s(-φ)
+        self.B2sQI_deviation = self.B2sQI_spline(self.phi) + self.B2sQI_spline(2*np.pi/self.nfp-self.phi) # B2s(φ) =-B2s(-φ)
         # Single scalar measures of deviation from QI: max value
         self.B20QI_deviation_max = max(abs(self.B20QI_deviation))
         self.B2cQI_deviation_max = max(abs(self.B2cQI_deviation))
@@ -454,14 +470,16 @@ def calculate_r2(self):
     ###########################################
     # COMPUTE ADDITIONAL 2nd ORDER QUANTITIES #
     ###########################################
-    # Compute Mercier stability
-    self.mercier()
+    if self.solve_extras:
+        # Compute Mercier stability
+        self.mercier()
 
-    # Compute ∇∇B tensor
-    self.calculate_grad_grad_B_tensor()
-    
-    # Compute r_c
-    self.calculate_r_singularity()
+        # Compute ∇∇B tensor
+        self.calculate_grad_grad_B_tensor()
+        
+        if not no_rc:
+            # Compute r_c
+            self.calculate_r_singularity_opt()
 
 
 def construct_qi_r2(self, order = 1, verbose = 0, params = [], method = "BFGS", X2s_in = 0, fun_opt = min_geo_qi_consistency):

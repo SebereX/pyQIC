@@ -26,15 +26,18 @@ class Qic():
         grad_grad_B_tensor_cylindrical, grad_grad_B_tensor_cartesian
     from .calculate_r2 import calculate_r2, construct_qi_r2, evaluate_X2c_X2s_QI
     from .calculate_r3 import calculate_r3
+    from .compute_B2_for_r1 import compute_B2_for_r1
+    from .fqs import multi_cubic
     from .mercier import mercier, mercier_detailed
     from .precession import plot_precession_different_alpha, maxj_at_bottom
-    from .omnigeneity import compute_eps_eff
+    from .omnigeneity import compute_eps_eff, compute_eps_eff_anal, omn_reshape
     from .plot import plot, get_boundary, B_fieldline, B_contour, plot_axis
-    from .r_singularity import calculate_r_singularity
+    from .r_singularity import calculate_r_singularity, calculate_r_singularity_opt
     from .plot import plot, plot_boundary, get_boundary, B_fieldline, B_contour, plot_axis, B_densityplot
     from .fourier_interpolation import fourier_interpolation
     from .Frenet_to_cylindrical import Frenet_to_cylindrical, to_RZ
     from .optimize_nae import optimise_params, min_geo_qi_consistency
+    from .shape_gradient import mag_well_reshape, compute_L_F_matrices, compute_sensitivity_Shafranov_shift
     from .to_vmec import to_vmec
     from .util import B_mag
     from .util_interp import convert_to_spline
@@ -46,15 +49,16 @@ class Qic():
                  frenet = False, axis_complete = True,
                  Raxis = {"type": 'fourier', "input_value": {"cos": [1.0, 0.1], "sin": []}},
                  Zaxis = {"type": 'fourier', "input_value": {"cos": [], "sin": [0.0, 0.05]}},
-                 curvature = None, torsion = None, ell = None, L = None, varphi = None, helicity = None,
-                 B0 = {"type": 'scalar', "input_value": 1.0},
+                 curvature = None, torsion = None, ell = None, L = None, varphi = None, helicity = None, solve_geo = True, solve_extras = True, do_splines = True,
+                 B0 = {"type": 'scalar', "input_value": 1.0}, Bbar = None,
                  sG=1, spsi=1,
                  d_over_curvature = {"type": 'scalar', "input_value": 0.1}, d =  {"type": 'scalar', "input_value": 1.0}, k_second_order_SS = 0.0,
                  alpha_tilde = None, omn_buffer = {"omn_method": 'buffer', "k_buffer": 1, "p_buffer": 2, "delta": np.pi/5},
                  sigma0=0., 
                  I2=0., p2=0.,
                  B2s = 0.0, B2c = 0.0,
-                 X2s = {"type": 'scalar', "input_value": 0.0}, X2c = {"type": 'scalar', "input_value": 0.0}):
+                 X2s = {"type": 'scalar', "input_value": 0.0}, X2c = {"type": 'scalar', "input_value": 0.0},
+                 quiet = False):
         """
         Create a near-axis stellarator.
         """
@@ -87,7 +91,7 @@ class Qic():
         # Consider shift of the grid to potentially avoid dividing by zero at points of vanishing curvature
         if omn==True:
             self.phi_shift = phi_shift
-            if phi_shift==0:
+            if phi_shift==0 and quiet:
                 print('WARNING! phi_shift = 0 may lead to problems wherever the curvature vanishes. It is recommended to use 1/3. ')
             # Define shifted array
             self.phi = phi + self.phi_shift*self.d_phi
@@ -101,8 +105,8 @@ class Qic():
             self.phi = phi
 
         # Input that determines whether to use the spectral differentiation matrix or finite differences:
-        # False - spectral, 2 - 2nd order centred differences, 4 - 4nd order centred differences,
-        # 6 - 6nd order centred differences, else 4th order. It is important for higher order and the non-smoothness
+        # False - spectral, 2 - 2nd order centred differences, 4 - 4th order centred differences,
+        # 6 - 6th order centred differences, else 4th order. It is important for higher order and the non-smoothness
         # of the construction
         self.diff_finite = diff_finite
 
@@ -140,11 +144,15 @@ class Qic():
             self.helicity_in = helicity
             self.flag_half = (np.mod(helicity, 1) == 0.5) # If half helicity, to take into account the flip of sign
             self.axis_complete = False
+            self.solve_geo = solve_geo
 
             self.Raxis = None
             self.Zaxis = None
 
         self.lasym = True # Temporary fix
+
+        self.solve_extras = solve_extras # To calculate additional quantities or not (such as grad B etc.)
+        self.Bbar_in = Bbar
 
         ##########################
         # MAGNETIC FIELD ON AXIS #
@@ -867,7 +875,6 @@ class Qic():
                              Raxis = Raxis, Zaxis = Zaxis, B0 = B0, d=d, d_over_curvature = d_over_curvature,
                              B2c = B2c)
             
-
         elif name == "QI NFP2 Katia" or name == "QI NFP2 DirectConstruction":
             Raxis = {"type": 'fourier',
                      "input_value": {"cos": [ 1.0,0.0,-1/17 ],
@@ -899,6 +906,7 @@ class Qic():
             nphi    = 201
             add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, nfp=nfp, B0 = B0, d = d, d_over_curvature = d_over_curvature, nphi = nphi, \
                              omn_buffer = buffer_opt, sigma0 = sigma0, p2 = p2, X2c = X2c, X2s = X2s, omn = True, order = 'r3')
+        
         elif name == "QI NFP2 Katia min":
             ####################################
             # ORIGINAL KATIA NFP 2 w/ SMOOTH α #
@@ -938,25 +946,35 @@ class Qic():
                              omn_buffer = buffer_opt, sigma0 = sigma0, p2 = p2, X2c = X2c, X2s = X2s, omn = omn, order = order)
             
         elif name == "QI NFP2 Katia smooth":
+            # Axis
             Raxis = {"type": 'fourier',
-                     "input_value": {"cos": [ 1.0,0.0,-1/17 ],
-                                     "sin":  []}}
+                        "input_value": {"cos": [ 1.0,0.0,-1/17 ],
+                                        "sin":  [ 0.0,0.0,0.0 ]}}
             Zaxis = {"type": 'fourier',
-                     "input_value": {"cos": [],
-                                     "sin": [ 0.0,0.8/2.04,0.01/2.04 ]}}
+                        "input_value": {"cos": [ 0.0,0.0,0.0 ],
+                                        "sin": [ 0.0,0.8/2.04,0.01/2.04 ]}}
+            # Magnetic field
             B0 = {"type": 'fourier',
-                     "input_value": {"cos": [1.0, 0.15], "sin": []}}
+                        "input_value": {"cos": [1.0, 0.15], "sin": [0.0, 0.0]}}
             
+            # First order field
             d = None
             d_over_curvature = {"type": 'scalar', "input_value": 0.73}
 
-            X2c = {"type": 'fourier',
-                     "input_value": {"cos": [ 0.0018400322140812674,-0.0013637739279265815,-0.0017961063281748597,-0.000855123667865997,-0.001412983361026517,-0.0010676686588779228,-0.0008117922713651492,-0.0002878689335032291,-0.0002515272886665927,-7.924709175875918e-05,-4.919421452969814e-05,0.0,0.0,0.0,0.0 ], 
-                                     "sin": [ 0.0,2.7062914673236698,-0.9151373916194634,0.021394010521077745,-0.017469913902854437,0.03186670312840335,0.021102584055813403,0.0024194864183551515,-0.0059152315287890125,0.003709416127750524,0.010027743000785166,0.0,0.0,0.0,0.0 ]}}
-            X2s = {"type": 'fourier',
-                     "input_value": {"cos": [ 0.4445604502180231,0.13822067284200223,-0.561756934579829,0.2488873179399463,-0.14559282723014635,0.020548052084815048,-0.011070304464557718,0.004342889373034949,-0.0015730819049237866,0.0035406584522436986,0.002831887060104115,0.0,0.0,0.0,0.0 ], 
-                                     "sin": [ 0.0,0.0012174780422017702,0.00026317725313621535,0.0002235661375254599,0.0006235230087895861,0.00021429298911807877,8.428032911991958e-05,-0.000142566391046771,-3.194627950185967e-05,-0.0001119389848119665,-6.226472957451552e-05 ]}}
+            # Second order shaping : 'minimal' shaping choice
+            X2c = {"type": 'scalar', "input_value": 0}
+            X2s = {"type": 'scalar', "input_value": 0}
             
+            # Buffer region details : use the standard form of [Camacho et al. (2022)]
+            omn_buffer = {"omn_method": 'simple-fourier', 
+                        "k_buffer": 5}
+
+            # Additional properties
+            sigma0 = 0.0
+            nfp     = 2
+            p2      = 0.0
+            order = 'r3'
+            omn = True
             buffer_opt = default_buffer_dict.copy()
             buffer_opt["omn_method"] = 'non-zone-smoother'
             buffer_opt["delta"] = 0.0
@@ -1037,7 +1055,6 @@ class Qic():
             add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, nfp=nfp, B0 = B0, d = d, d_over_curvature = d_over_curvature, nphi = nphi, \
                              omn_buffer = buffer_opt, sigma0 = sigma0, p2 = p2, X2c = X2c, X2s = X2s, omn = True, order = 'r3')
        
-
         else:
             raise ValueError('Unrecognized configuration name')
 
