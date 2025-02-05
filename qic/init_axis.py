@@ -70,23 +70,30 @@ def init_axis(self, omn_complete = True):
         # It modifies phi, nu and the Frenet geometry accordingly, using varphi as regular grid
         flag_half = (np.mod(self.helicity_in, 1) == 0.5) # If half helicity, take into account the flip of sign
         flag_func = True if ("function_ell" in self.curvature_in) else False
-        _ = invert_frenet_axis(self, self.curvature, self.torsion, self.ell, self.varphi, full_axis = True, func = flag_func, flip = flag_half)
-        
-        # Obtain axis description as Fourier components : important for output to VMEC (at least approximately)
-        ntor = 15
-        rc, rs, zc, zs = to_Fourier_axis(self.R0, self.Z0, self.nfp, ntor = ntor, lasym = True, phi_in = self.phi)
-        self.Raxis = {"type": "fourier", "input_value": {}}
-        self.Zaxis = {"type": "fourier", "input_value": {}}
-        self.Raxis["input_value"]["cos"] = rc
-        self.Raxis["input_value"]["sin"] = rs
-        self.Zaxis["input_value"]["cos"] = zc
-        self.Zaxis["input_value"]["sin"] = zs
+
+        if self.solve_geo:
+            _ = invert_frenet_axis(self, self.curvature, self.torsion, self.ell, self.varphi, full_axis = True, func = flag_func, flip = flag_half)
+            
+            # Obtain axis description as Fourier components : important for output to VMEC (at least approximately)
+            ntor = 15
+            rc, rs, zc, zs = to_Fourier_axis(self.R0, self.Z0, self.nfp, ntor = ntor, lasym = True, phi_in = self.phi)
+            self.Raxis = {"type": "fourier", "input_value": {}}
+            self.Zaxis = {"type": "fourier", "input_value": {}}
+            self.Raxis["input_value"]["cos"] = rc
+            self.Raxis["input_value"]["sin"] = rs
+            self.Zaxis["input_value"]["cos"] = zc
+            self.Zaxis["input_value"]["sin"] = zs
 
         # Computing dl/dphi = dl/dvarphi dvarphi/dphi
         # Need to separate secular parts
         d_l_d_varphi = abs_G0 / B0
-        d_phi_d_varphi = 1 - np.matmul(self.d_d_varphi, self.nu)
-        d_l_d_phi = d_l_d_varphi / d_phi_d_varphi
+
+        if self.solve_geo:
+            d_phi_d_varphi = 1 - np.matmul(self.d_d_varphi, self.nu)
+            d_l_d_phi = d_l_d_varphi / d_phi_d_varphi
+        else:
+            d_phi_d_varphi = np.ones(self.nphi)
+            d_l_d_phi = d_l_d_varphi / d_phi_d_varphi
         
         # Construct the derivative in phi
         self.d_d_phi = np.zeros((self.nphi, self.nphi))
@@ -96,7 +103,10 @@ def init_axis(self, omn_complete = True):
         d3_l_d_phi3 = np.matmul(self.d_d_phi, d2_l_d_phi2)
 
         # Final value for B0
-        Bbar = self.spsi * np.mean(B0)
+        if self.Bbar_in == None:
+            Bbar = self.spsi * np.mean(B0)
+        else:
+            Bbar = self.Bbar_in
         self.B0_spline = self.convert_to_spline(B0, varphi = False) # splines are in phi
 
         # Final value for G0
@@ -390,8 +400,11 @@ def init_axis(self, omn_complete = True):
 
             abs_G0_over_B0 = self.sG*G0/self.B0
 
-            # Reference Bbar definition
-            self.Bbar = self.spsi * self.B0
+            if self.Bbar_in == None:
+                # Reference Bbar definition
+                self.Bbar = self.spsi * self.B0
+            else:
+                Bbar = self.Bbar_in
 
             # Initialise varphi
             self.varphi = np.zeros(nphi)

@@ -42,6 +42,12 @@ def _residual(self, x):
             non_secular_part = self.evaluate_input_on_grid(self.alpha_in, self.varphi)
             self.alpha = non_secular_part + self.varphi * helicity * self.nfp
 
+            # Separate buffer part
+            varphi_cent = self.varphi - np.pi/self.nfp
+            alpha_cent = np.interp(0, varphi_cent, self.alpha)
+            if not np.abs(alpha_cent - np.pi/2) < 1e-6: print("WARNING! Problems with the centre of alpha!")
+            self.alpha_buf = self.alpha - iota * varphi_cent - alpha_cent
+
             # We will need to compute gamma = iota - d_alpha_d_varphi
             # To compute d_alpha_d_varphi, we need to separate the non-symmetric piece: we assume this is the helicity part
             self.gamma = iota - helicity * self.nfp - np.matmul(self.d_d_varphi, non_secular_part)
@@ -319,7 +325,11 @@ def _make_buffer(self, buffer_method, iota):
             raise KeyError('Unrecognised buffer region completion! Must be one of buffer, non-zone, non-zone-smoother, non-zone-fourier or simple-fourier.')
     
     # Calculate alpha putting the iota and not_iota pieces together
-    self.alpha = self.alpha_iota * iota + self.alpha_notIota
+    self.alpha = self.alpha_iota * iota + self.alpha_notIota - np.pi*(2*helicity) # Eliminate the centre (the effects are at most a flip in sign of d)
+    varphi_cent = self.varphi - np.pi/self.nfp
+    alpha_cent = np.interp(0, varphi_cent, self.alpha)
+    assert np.abs(alpha_cent - np.pi/2) < 1e-6, "Problems with the centre of alpha!"
+    self.alpha_buf = self.alpha - iota * varphi_cent - alpha_cent
 
     return
 
@@ -530,7 +540,8 @@ def r1_diagnostics(self):
     # Area of the ellipse in the plane perpendicular to the magnetic axis
     self.ellipse_area = np.pi * self.sG * self.Bbar / self.B0 + 2 * (self.X1c * self.Y1c - self.X1s * self.Y1s)
 
-    ## Compute the grad B tensor ##
-    self.calculate_grad_B_tensor()
+    if self.solve_extras:
+        ## Compute the grad B tensor ##
+        self.calculate_grad_B_tensor()
 
 
