@@ -620,8 +620,8 @@ def calculate_r_singularity_opt(self, high_order=False, check = False):
         flag_linear_flat = np.abs(residual) < 1e-5
         flag_linear[flag_linear] = flag_linear_flat
         linear_solutions[flag_linear] = rr[flag_linear_flat]
-                                
-        # Compute the quadratic solutions
+                  
+        ## Compute the quadratic solutions
         quadratic_solutions = np.full_like(sin2theta, np.nan)
         quadratic_A = select_relevant_1d(g20) + select_relevant_1d(g2s) * sin2theta[flag] + select_relevant_1d(g2c) * cos2theta[flag]
         quadratic_B = costheta[flag] * select_relevant_1d(g1c) + sintheta[flag] * select_relevant_1d(g1s)
@@ -669,7 +669,8 @@ def calculate_r_singularity_opt(self, high_order=False, check = False):
         flag_pos2_flat = np.abs(residual) < 1e-5
         flag_pos2[flag_pos2] = flag_pos2_flat
         quadratic_solutions_sgn = quadratic_solutions_sgn[flag_pos2_flat]
-        quadratic_solutions[flag_pos2][np.isnan(quadratic_solutions[flag_pos2])] = quadratic_solutions_sgn
+        flag_nan_flat = np.isnan(quadratic_solutions[flag_pos2])
+        quadratic_solutions[flag_pos2][flag_nan_flat] = quadratic_solutions_sgn[flag_nan_flat]
         flag_new = np.full_like(flag, False)
         flag_new[flag_pos2] = np.logical_and(flag_pos2[flag_pos2], np.greater(quadratic_solutions[flag_pos2], quadratic_solutions_sgn))
         quadratic_solutions[flag_new] = quadratic_solutions_sgn[flag_new[flag_pos2]]
