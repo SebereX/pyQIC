@@ -71,15 +71,19 @@ def fun(stel, extras):
     res = stel.B2cQI_deviation_max
     return res
 
-def min_geo_qi_consistency(stel, order = 1):
+def min_geo_qi_consistency(stel, order = 1, X2s_in = None):
     """
-    Function that computes the consistency conditions of a first order construction with 
-    second order QI at the points phi=0,pi/nfp, and returns the mismatch.
-
-    stel = the stellarator construction, Qic.
-    order = order of the zeroes of curvature at the points where the consistency conditions
-        are to be evaluated. This determines the number of constraints.
-    
+    Function that calculates the second order QI mismatch at bottom of the well, and constructs ideal 2nd order
+    shaping to enforce omnigeneity where possible.
+    Args:
+        stel (object): Qic object
+        order (int): order of the zero to calculate the mismatch at bottom (default is 1)
+        X2s_in (list): if given, then it is the input X2s_tilde shaping, and shaping X2c and X2s are returned. 
+            If not given, then only the mismatch is returned.
+    Returns:
+        float: residual of the QI mismatch at the bottom of the well
+        list: X2c shaping at the bottom of the well (only if X2s_in is given)
+        list: X2s shaping at the bottom of the well (only if X2s_in is given)
     """
     # Define various quantities obtained from Qic
     d_d_varphi = stel.d_d_varphi
@@ -93,7 +97,11 @@ def min_geo_qi_consistency(stel, order = 1):
     Y1s = stel.Y1s
     Y1c = stel.Y1c
     iota_N = stel.iotaN
+    curvature = stel.curvature
     torsion = stel.torsion
+    varphi_cent = stel.varphi - np.pi/stel.nfp
+    alpha_buf = stel.alpha_buf
+    cos_2buf = np.cos(2*alpha_buf)
 
     # Construct second order quantities (like in calculate_r2), but only needing
     # order = 'r1' quantities
@@ -115,29 +123,53 @@ def min_geo_qi_consistency(stel, order = 1):
     Tc = B0/dldphi*(dZ2c + 2*iota_N*Z2s + (qc*qc-qs*qs+rc*rc-rs*rs)/4/dldphi)
     Ts = B0/dldphi*(dZ2s - 2*iota_N*Z2c + (qc*qs+rc*rs)/2/dldphi)
 
-    angle = stel.alpha - (-stel.helicity * stel.nfp * stel.varphi)
-    c2a1 = np.cos(2*angle)
-    s2a1 = np.sin(2*angle)
+    # Combination angles
+    Phi = iota_N*varphi_cent - stel.helicity*np.pi
+    c2a1 = np.cos(2*Phi)
+    s2a1 = np.sin(2*Phi)
 
-    # It is unnecessary to compute this everywhere, but the way implemented this is the 
-    # easy way
-    cond_1st = (Tc*c2a1 + Ts*s2a1 + B0*B0*np.matmul(d_d_varphi,stel.d*stel.d/dB0)/4)
-    pos = [0, np.pi] # Not necessary to impose it at 0, but it makes it easier to construct X2s and X2c later
-    # Interpolate to the points required (especially because the original grid is shifted)
-    cond_1st_eval= fourier_interpolation(cond_1st, pos-stel.phi_shift*stel.d_phi*stel.nfp)
-    res = np.sum(cond_1st_eval*cond_1st_eval)
-    der_cond = cond_1st
-    # For higher order zeroes, we have additional conditions
-    if order and order>1:
-        for i in range(order-1):
-            der_cond = np.matmul(d_d_varphi,der_cond)
-            der_cond_eval = fourier_interpolation(der_cond, pos-stel.phi_shift*stel.d_phi*stel.nfp)
-            res_add = np.sum(der_cond_eval*der_cond_eval)
-            print(res_add)
-            res += res_add
+    # Construct expression
+    cond_1st = -(Tc*c2a1 + Ts*s2a1 - B0*B0*np.matmul(d_d_varphi,stel.d*stel.d/dB0*cos_2buf)/4)
 
-    # Return the mismatch
-    return res
+    # Check whether input X2s_in is given
+    flag_X = False
+    if isinstance(X2s_in, list) or isinstance(X2s_in, np.ndarray) or isinstance(X2s_in, float) or isinstance(X2s_in, int):
+        flag_X = True
+        X2s_tilde = X2s_in
+        X2c_tilde = cond_1st/(curvature*B0 + 1e-30)  # Add small number to avoid division by zero
+
+        if isinstance(X2s_in, list) or isinstance(X2s_in, np.ndarray): assert np.size(X2s_in) == stel.nphi, "X2s_in must have the same size as stel.nphi"
+
+        X2c = -X2c_tilde*c2a1 - X2s_tilde*s2a1
+        X2s = X2s_tilde*c2a1 - X2c_tilde*s2a1
+    
+    if order > 0:
+        # Residual bottom
+        pos = [np.pi/stel.nfp] # Not necessary to impose it at 0, but it makes it easier to construct X2s and X2c later
+        # Interpolate to the points required (especially because the original grid is shifted)
+        cond_1st_eval= np.interp(pos, stel.varphi, cond_1st)
+        res = np.sum(cond_1st_eval*cond_1st_eval)
+        der_cond = cond_1st
+        # For higher order zeroes, we have additional conditions
+        if order and order>1:
+            for i in range(order-1):
+                der_cond = np.matmul(d_d_varphi,der_cond)
+                der_cond_eval = np.interp(pos,stel.varphi, der_cond)
+                res_add = np.sum(der_cond_eval*der_cond_eval)
+                res += res_add
+
+        # Finalise mismatch
+        res = np.sqrt(res)
+
+    # Return shape only if shape was passed as input
+    if order == 0 and flag_X:
+        return X2c, X2s
+    elif flag_X:
+        return res, X2c, X2s
+    elif order > 0 and not flag_X:
+        return res
+    else:
+        raise Warning("If the order is 0, then X2s_in must be given, otherwise the order must be >0")
 
 def optimise_params(stel, x_param_label, fun_opt = fun, verbose = 0, maxiter = 200, maxfev  = 200, method = 'Nelder-Mead', scale = 0, extras = [], thresh = 1.5):
     """
