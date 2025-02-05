@@ -10,23 +10,12 @@ def mercier(self):
     """
     Compute the terms in Mercier's criterion.
     """
-
-    # See Overleaf note "Mercier criterion near the magnetic axis- detailed notes".
-    # See also "20200604-02 Checking sign in Mercier DGeod near axis.docx"
-
     # Shorthand:
-    d_l_d_phi = self.d_l_d_phi
     B0 = self.B0
     Bbar = self.Bbar
     G0 = self.G0
     p2 = self.p2
-    # etabar = self.etabar
-    # curvature = self.curvature
-    # sigma = self.sigma
-    # iotaN = self.iotaN
-    # iota = self.iota
     pi = np.pi
-    d_phi = self.d_phi
     nfp = self.nfp
     B1s = self.B1s
     B1c = self.B1c
