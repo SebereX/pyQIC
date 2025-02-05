@@ -600,79 +600,115 @@ def calculate_r_singularity_opt(self, high_order=False, check = False):
             logger.error(msg)
             raise RuntimeError(msg)
         
-        # Compute the linear solutions
+        ## Compute the linear solutions
+        # Initialise linear roots to nan's
         linear_solutions = np.full_like(sin2theta, np.nan); flag_linear = np.full_like(flag, False); flag_pos = np.full_like(flag, False)
+        # Compute denominator for solve (flattened array where flag)
         denominator = 2 * (select_relevant_1d(g2s) * cos2theta[flag] - select_relevant_1d(g2c) * sin2theta[flag])
+        # Check not close to zero
         flag_linear_flat = np.abs(denominator) > 1e-8
         flag_linear[flag] = flag_linear_flat
+        # Evaluate linear for flag_linear
         rr = (select_relevant_1d(g1c, flag_linear) * sintheta[flag_linear] - \
                                         select_relevant_1d(g1s, flag_linear) * costheta[flag_linear]) / denominator[flag_linear_flat]
-        
+        # Update flag_linear: now only True if positive root
         flag_linear_flat = rr > 0
         flag_linear[flag_linear] = flag_linear_flat
         rr = rr[flag_linear_flat]
+        # Check residual (for these points)
         residual = select_relevant_1d(g0, flag_linear) + \
                 rr * (select_relevant_1d(g1c, flag_linear) * costheta[flag_linear] + \
                 select_relevant_1d(g1s, flag_linear) * sintheta[flag_linear]) + rr**2 * \
                 (select_relevant_1d(g20, flag_linear) + select_relevant_1d(g2s, flag_linear) * sin2theta[flag_linear] + \
                 select_relevant_1d(g2c, flag_linear) * cos2theta[flag_linear])   
-        
+        # Update flag to include only those with small residual
         flag_linear_flat = np.abs(residual) < 1e-5
         flag_linear[flag_linear] = flag_linear_flat
+        # Save as roots those that passed all tests
         linear_solutions[flag_linear] = rr[flag_linear_flat]
                   
         ## Compute the quadratic solutions
+        # Initialise quadratic roots to nan's
         quadratic_solutions = np.full_like(sin2theta, np.nan)
+        # Compute coefficients quadratic polynomial : only in flag
         quadratic_A = select_relevant_1d(g20) + select_relevant_1d(g2s) * sin2theta[flag] + select_relevant_1d(g2c) * cos2theta[flag]
         quadratic_B = costheta[flag] * select_relevant_1d(g1c) + sintheta[flag] * select_relevant_1d(g1s)
         quadratic_C = select_relevant_1d(g0)
         radicand = quadratic_B * quadratic_B - 4 * quadratic_A * quadratic_C
 
         # Linear subcase
+        # Initialise flags with the quadratic shape
         flag_linear = np.full_like(flag, False); flag_pos = np.full_like(flag, False); flag_neg = np.full_like(flag, False)
+        # flag_linear: when decide the equation is really linear instead of quadratic
         flag_linear[flag] = np.abs(quadratic_A) < 1e-13;  flag_linear_flat = flag_linear[flag]
+        # Linear solution
         quadratic_solutions[flag_linear] = -quadratic_C[flag_linear_flat] / quadratic_B[flag_linear_flat]
+        # flag_pos: only valid if positive (and if linear)
         flag_pos[flag_linear] = quadratic_solutions[flag_linear] > 0
+        # Check if solve the equation
         residual = -select_relevant_1d(g1c, flag_pos) * sintheta[flag_pos] + select_relevant_1d(g1s, flag_pos) * costheta[flag_pos] + \
                 2 * quadratic_solutions[flag_pos] * (select_relevant_1d(g2s,flag_pos) * cos2theta[flag_pos] - \
                 select_relevant_1d(g2c,flag_pos) * sin2theta[flag_pos])  
-        flag_pos[flag_pos] = np.abs(residual) < 1e-5
-        flag_neg[flag_linear] = np.logical_not(flag_pos[flag_linear])
+        flag_pos[flag_pos] = np.abs(residual) < 1e-5    # Update flag_pos: it now corresponds to valid linear roots
+        flag_neg[flag_linear] = np.logical_not(flag_pos[flag_linear])   # flag_neg: linear cases not satisfying other conditions
         quadratic_solutions[flag_neg] = np.nan
 
         # Quadratic subcase
+        # Initialise flags with the quadratic shape
         flag_quadratic = np.full_like(flag, False); flag_pos = np.full_like(flag, False); flag_pos2 = np.full_like(flag, False); flag_neg = np.full_like(flag, False)
+        # flag_quadratic: flag not including linear (but within flag) and radicand > 0
         flag_quadratic[flag] = np.logical_and(np.logical_not(flag_linear[flag]), radicand >= 0)
         flag_quadratic_flat = flag_quadratic[flag]
+        # radical: flattened array only evaluated for True flag_quadratic
         radical = np.sqrt(radicand[flag_quadratic_flat])
-
+        
+        # First sign solution
         sign_quadratic = -1
+        # Evaluate quadratic formula (flattened array of size flag_quadratic_flat = flag_quadratic[flag])
         temp = (-quadratic_B[flag_quadratic_flat] + sign_quadratic * radical) / (2 * quadratic_A[flag_quadratic_flat])
-        flag_pos[flag_quadratic] = temp > 0
+        # flag_pos: True where solution to quadratic is positive. Note no need to have nested flag_quadratic[flag] because all True of 
+        # fal_quadratic are also of flag
+        flag_pos_flat = temp > 0
+        flag_pos[flag_quadratic] = flag_pos_flat
+        # Check residual
         residual = -select_relevant_1d(g1c, flag_pos) * sintheta[flag_pos] + \
                 select_relevant_1d(g1s, flag_pos) * costheta[flag_pos] + \
-                2 * temp[flag_pos[flag_quadratic]] * (select_relevant_1d(g2s, flag_pos) * cos2theta[flag_pos] - \
+                2 * temp[flag_pos_flat] * (select_relevant_1d(g2s, flag_pos) * cos2theta[flag_pos] - \
                 select_relevant_1d(g2c, flag_pos) * sin2theta[flag_pos])
+        # Update flag_pos: now filter out those with large residual
         flag_pos[flag_pos] = np.abs(residual) < 1e-5
-        flag_neg[flag_quadratic] = np.logical_not(flag_pos[flag_quadratic])
+        # flag_neg[flag_quadratic] = np.logical_not(flag_pos[flag_quadratic])
+        # Save quadratic solution only for flag_pos (i.e. small residual, positive value, quadratic, flag)
+        # temp was evaluated for all True flag__quadratic 
         quadratic_solutions[flag_pos] = temp[flag_pos[flag_quadratic]]
 
+        # Other sign
         sign_quadratic = 1
+        # Quadratic formula with the other sign (flattened array of size flag_quadratic_flat = flag_quadratic[flag])
         quadratic_solutions_sgn = (-quadratic_B[flag_quadratic_flat] + sign_quadratic * radical) / (2 * quadratic_A[flag_quadratic_flat])
+        # flag_pos2: positive roots
         flag_pos2_flat = quadratic_solutions_sgn > 0
-        quadratic_solutions_sgn = quadratic_solutions_sgn[flag_pos2_flat]
         flag_pos2[flag_quadratic] = flag_pos2_flat
+        # Filter quadratic_solutions_sgn to positive only
+        quadratic_solutions_sgn = quadratic_solutions_sgn[flag_pos2_flat]
+        # Compute residual
         residual = -select_relevant_1d(g1c, flag_pos2) * sintheta[flag_pos2] + \
                 select_relevant_1d(g1s, flag_pos2) * costheta[flag_pos2] + \
                 2 * quadratic_solutions_sgn * (select_relevant_1d(g2s, flag_pos2) * cos2theta[flag_pos2] - \
                 select_relevant_1d(g2c, flag_pos2) * sin2theta[flag_pos2])
+        # flag for small residual
         flag_pos2_flat = np.abs(residual) < 1e-5
         flag_pos2[flag_pos2] = flag_pos2_flat
+        # Select roots with small residual
         quadratic_solutions_sgn = quadratic_solutions_sgn[flag_pos2_flat]
+        
+        # Merge roots together with those already computed and corresponding to the other sign
+        # If there is no such root already computed (i.e., we have nans) then use the currently computed one
         flag_nan_flat = np.isnan(quadratic_solutions[flag_pos2])
-        quadratic_solutions[flag_pos2][flag_nan_flat] = quadratic_solutions_sgn[flag_nan_flat]
+        quadratic_solutions[flag_pos2][flag_nan_flat] = quadratic_solutions_sgn[flag_nan_flat]  # if nan, substitute
+        # Now check when the root already in store is larger than the new one, if so change it
         flag_new = np.full_like(flag, False)
-        flag_new[flag_pos2] = np.logical_and(flag_pos2[flag_pos2], np.greater(quadratic_solutions[flag_pos2], quadratic_solutions_sgn))
+        flag_new[flag_pos2] = np.greater(quadratic_solutions[flag_pos2], quadratic_solutions_sgn)   # if newly computed nan, will return False
         quadratic_solutions[flag_new] = quadratic_solutions_sgn[flag_new[flag_pos2]]
 
         # When quadratic is np.nan, check if linear has some value
