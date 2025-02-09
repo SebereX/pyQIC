@@ -328,6 +328,7 @@ def _make_buffer(self, buffer_method, iota):
     self.alpha = self.alpha_iota * iota + self.alpha_notIota - np.pi*(2*helicity) # Eliminate the centre (the effects are at most a flip in sign of d)
     varphi_cent = self.varphi - np.pi/self.nfp
     alpha_cent = np.interp(0, varphi_cent, self.alpha)
+    self.alpha_cent = alpha_cent
     assert np.abs(alpha_cent - np.pi/2) < 1e-6, "Problems with the centre of alpha!"
     self.alpha_buf = self.alpha - iota * varphi_cent - alpha_cent
 
