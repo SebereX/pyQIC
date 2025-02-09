@@ -544,5 +544,6 @@ def init_axis(self, omn_complete = True):
 
         # Spline interpolant for nu = varphi-phi
         nu = self.varphi-self.phi
+        self.nu = nu
         self.nu_spline = self.convert_to_spline(nu, varphi = False)
         self.nu_spline_of_varphi = self.convert_to_spline(nu, varphi = True)
