@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.optimize import minimize, least_squares
-from qic.reverse_frenet_serret import invert_frenet_axis
+from qic.reverse_frenet_serret_old import invert_frenet_axis
 
 # Get the machine precision for floating-point numbers
 eps = np.finfo(float).eps
@@ -34,8 +34,8 @@ stel.nfp = nfp
 stel.flag_half = True
 stel.nphi = N
 stel.L_in = 2*np.pi/nfp
-stel.phi = np.linspace(0, 2*np.pi/stel.nfp, stel.nphi)
-stel.varphi = np.linspace(0, 2*np.pi/stel.nfp, stel.nphi)
+stel.phi = np.linspace(0, 2*np.pi/stel.nfp, stel.nphi, endpoint=False)
+stel.varphi = np.linspace(0, 2*np.pi/stel.nfp, stel.nphi, endpoint=False)
 
 curvature_func = lambda x: 0.5*(1+np.cos(stel.nfp*x))*np.sin(0.5*stel.nfp*x)*np.sin(stel.nfp*x)*params[0]
 torsion_func = lambda x:params[1] + params[2]*np.cos(stel.nfp*x)

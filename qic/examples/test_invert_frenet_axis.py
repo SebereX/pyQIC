@@ -1,5 +1,5 @@
 import numpy as np
-from qic.reverse_frenet_serret import invert_frenet_axis
+from qic.reverse_frenet_serret_old import invert_frenet_axis
 
 # Example usage
 kappa = [0.00000000e+00,1.87563887e-01,3.74215561e-01,5.59043387e-01
