@@ -44,9 +44,11 @@ def calculate_grad_B_tensor(self):
                           + s.sG * s.Bbar * s.d_l_d_varphi * s.torsion / s.B0 \
                           + s.iotaN * (s.Y1s * s.Y1s + s.Y1c * s.Y1c))
     if hasattr(s.B0, "__len__"): # check if B0 is an array (in quasisymmetry B0 is a scalar)
-        tensor.tt = s.sG * np.matmul(s.d_d_varphi, s.B0) / s.d_l_d_varphi
+        s.d_B0_d_varphi = np.matmul(s.d_d_varphi, s.B0)
+        tensor.tt = s.sG * s.d_B0_d_varphi/ s.d_l_d_varphi
     else:
         tensor.tt = 0
+        s.d_B0_d_varphi = 0
 
     self.grad_B_tensor = tensor
     
