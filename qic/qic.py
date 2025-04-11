@@ -31,9 +31,9 @@ class Qic():
     from .mercier import mercier, mercier_detailed
     from .precession import plot_precession_different_alpha, maxj_at_bottom
     from .omnigeneity import compute_eps_eff, compute_eps_eff_anal, omn_reshape
-    from .plot import plot, get_boundary, B_fieldline, B_contour, plot_axis
+    from .plot import plot, get_boundary, get_boundary_cartesians, B_fieldline, B_contour, plot_axis
     from .r_singularity import calculate_r_singularity, calculate_r_singularity_opt
-    from .plot import plot, plot_boundary, get_boundary, B_fieldline, B_contour, plot_axis, B_densityplot
+    from .plot import plot, plot_boundary, get_boundary, plot_boundary_cartesians, get_boundary_cartesians, B_fieldline, B_contour, plot_axis, B_densityplot
     from .fourier_interpolation import fourier_interpolation
     from .Frenet_to_cylindrical import Frenet_to_cylindrical, to_RZ
     from .optimize_nae import optimise_params, min_geo_qi_consistency

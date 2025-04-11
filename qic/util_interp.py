@@ -29,7 +29,7 @@ def convert_to_spline(self, array, grid = None, varphi = False, periodic = True,
     flag_closed = 1 if domain_range[domain_extent] < (domain[-1]-domain[-2])/10 else 0
 
     # If input data is float, simply copy it down
-    if isinstance(array, float):
+    if isinstance(array, float) or isinstance(array, int):
         sp=spline(np.append(domain,2*np.pi/self.nfp+domain[0]), np.ones(self.nphi + 1)*array, bc_type='periodic')
     # Interpolation taking into account that the function is periodic
     elif periodic:
@@ -64,7 +64,8 @@ def convert_to_spline(self, array, grid = None, varphi = False, periodic = True,
                 array_ext = np.append(array, array[0])
                 bc_type = 'periodic'
             sp_temp = make_interp_spline(domain_ext, array_ext, k=7, axis=0, bc_type = bc_type)
-            sp = lambda x: sp_temp(x % (2*np.pi/self.nfp))
+            period = 2*np.pi/self.nfp if domain_extent == 1 else 2*np.pi
+            sp = lambda x: sp_temp(x % (period)) 
     else:
         sp = make_interp_spline(domain, array, k = 7)
     return sp

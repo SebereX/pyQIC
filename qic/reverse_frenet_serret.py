@@ -214,7 +214,7 @@ def cartesian_to_cylindrical(position):
     Z = position[:,2]
     return R, Theta, Z
 
-def align_with_min_z_excursion(position):
+def align_with_min_z_excursion(position, ss_points = None):
     # Center the curve at the origin
     centroid = np.mean(position, axis=0)
     centered_position = position - centroid
@@ -226,12 +226,24 @@ def align_with_min_z_excursion(position):
 
     # Check that the system is right handed
     if np.linalg.det(rotation_matrix) < 0:
+        print('WARNING! Not a rotation matrix (left handed coordinate system)')
         rotation_matrix[2,:] *= -1
 
-    # Transform curve
-    transformed_position = np.einsum('ij,kj->ki', rotation_matrix, centered_position)  
-    
-    return transformed_position, centroid, rotation_matrix
+    aligned = np.einsum('ji,ik->kj', rotation_matrix, rotation_matrix)
+    proj = [np.dot(aligned[j,:],rotation_matrix[j,:]) for j in range(3)]
+    extra_rot = np.sign(proj)
+
+    if np.sum(extra_rot) == -1: 
+        extra_rot = np.diag(extra_rot)
+        rotation_matrix = np.dot(rotation_matrix, extra_rot)
+
+    if isinstance(ss_points, list) or isinstance(ss_points, np.ndarray):
+        ss_points_transformed = np.array([np.dot(point - centroid, rotation_matrix.T) for point in ss_points])
+        return ss_points_transformed, centroid, rotation_matrix
+    else:
+        # Transform curve
+        transformed_position = np.einsum('ij,kj->ki', rotation_matrix, centered_position)  
+        return transformed_position, centroid, rotation_matrix
 
 def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full_axis = True, flip = True, minimal = False, func = False):
     ## Complete the curve ##
@@ -319,13 +331,18 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     # Find set of SS points
     set1, set2 = find_ss_points(self, T_fun, position_fun=position_fun)
 
-    # Find the necessary rotation and shift of the coordinates to frame in cylindrical coordinates
-    if self.nfp == 2:
-        set1 = np.concatenate(([set1[0]],[set2[0]],[set1[1]],[set2[1]]))
-    elif self.nfp == 1:
-        print("WARNING! FS alignment and inversion not implemented for nfp = 1.")
-    center, ss_points, rotation_matrix = transform_polygon(set1)
-
+    # Find the necessary rotation and shift of the coordinates to frame in cylindrical coordinates     
+    ind_ss_point = 1  
+    if self.nfp == 1:
+        ss_points, center, rotation_matrix = align_with_min_z_excursion(position, ss_points = [set1[0],set2[0]])
+        ind_ss_point = 0
+        # print("WARNING! FS alignment and inversion not implemented for nfp = 1.")
+    else:
+        if self.nfp == 2:
+            set1 = np.concatenate(([set1[0]],[set2[0]],[set1[1]],[set2[1]]))
+            ind_ss_point = 2
+        center, ss_points, rotation_matrix = transform_polygon(set1)
+    
     # Functions for transformed positions and vectors
     def aligned_position_fun(ell):
         position = position_fun(ell)
@@ -345,6 +362,45 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     # Align the curve to minimize Z excursion
     aligned_position = np.dot(position - center, rotation_matrix.T)
 
+    if plot:
+        centered_position = position - center
+        ax = plt.figure().add_subplot(projection='3d')
+        ax.plot(centered_position[:,0],centered_position[:,1],zs = centered_position[:,2])
+        for j, v in enumerate(rotation_matrix):
+            ax.plot([0, v[0]], [0, v[1]], [0, v[2]], alpha=0.8, lw=3, label = f"{j}")
+        plt.plot(aligned_position[:,0], aligned_position[:,1], aligned_position[:,2])
+        for j, v in enumerate(rotation_matrix):
+            aligned = np.einsum('ji,i->j', rotation_matrix, v)
+            ax.plot([0, aligned[0]], [0, aligned[1]], [0, aligned[2]], alpha=0.8, lw=3, label = f"{j}")
+        plt.legend()
+
+    # Rotate the Frenet basis vectors accordingly
+    aligned_T = np.einsum('ji,ki->kj', rotation_matrix, T)
+    aligned_N = np.einsum('ji,ki->kj', rotation_matrix, N)
+    aligned_B = np.einsum('ji,ki->kj', rotation_matrix, B)
+
+    flag_half = self.flag_half
+
+    def save_splines_FS_cart(varphi, ell_grid, kappa = kappa, tau = tau):
+        # Keep the geometric quantities in cylindrical phi
+        self.x0_cart_spline = self.convert_to_spline(aligned_position[:,0], grid = varphi)
+        self.y0_cart_spline = self.convert_to_spline(aligned_position[:,1], grid = varphi)
+        self.z0_cart_spline = self.convert_to_spline(aligned_position[:,2], grid = varphi)
+            
+        # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
+        # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in cylindrical phi.
+        self.normal_x_cart_spline = self.convert_to_spline(aligned_N[:,0], grid = varphi, half_period = flag_half)
+        self.normal_y_cart_spline = self.convert_to_spline(aligned_N[:,1], grid = varphi, half_period = flag_half)
+        self.normal_z_cart_spline = self.convert_to_spline(aligned_N[:,2], grid = varphi, half_period = flag_half)
+        self.binormal_x_cart_spline = self.convert_to_spline(aligned_B[:,0], grid = varphi, half_period = flag_half)
+        self.binormal_y_cart_spline = self.convert_to_spline(aligned_B[:,1], grid = varphi, half_period = flag_half)
+        self.binormal_z_cart_spline = self.convert_to_spline(aligned_B[:,2], grid = varphi, half_period = flag_half)
+        self.tangent_x_cart_spline = self.convert_to_spline(aligned_T[:,0], grid = varphi)
+        self.tangent_y_cart_spline = self.convert_to_spline(aligned_T[:,1], grid = varphi)
+        self.tangent_z_cart_spline = self.convert_to_spline(aligned_T[:,2], grid = varphi)
+
+    save_splines_FS_cart(varphi, ell)
+
     ######################################
     # CONVERT TO CYLINDRICAL COORDINATES #
     ######################################
@@ -352,164 +408,39 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     R, phi, Z = cartesian_to_cylindrical(aligned_position)
     R_ss, phi_ss, Z_ss = cartesian_to_cylindrical(ss_points)
 
-    # Output to close curve
-    mismatch = [T[-1]-T[0], N[-1]+N[0],[R_ss[1]-R_ss[0], Z_ss[1]-Z_ss[0], phi_ss[1]-phi_ss[0]-2*np.pi/self.nfp], position[-1] - position[0]]
-
-    if minimal:
-        return mismatch
-
-    # Rotate the Frenet basis vectors accordingly
-    aligned_T = np.einsum('ji,ki->kj', rotation_matrix, T)
-    aligned_N = np.einsum('ji,ki->kj', rotation_matrix, N)
-    aligned_B = np.einsum('ji,ki->kj', rotation_matrix, B)
-
-    # Check whether the sense of the axis is in the positive cylindrical angle
-    phi = np.unwrap(phi)
-    phi0 = phi[0]
-    sense_axis = phi[1] - phi0
-
-    # Correct sense of the axis
-    sgn_change = 1
-    if sense_axis < 0:
-        # Change coordinates accordingly
-        sgn_change = -1
-        Z = -Z
-        phi = -phi
-
-        aligned_position[:,1] *= -1
-        aligned_T[:,1] *= -1
-        aligned_N[:,1] *= -1
-        aligned_B[:,1] *= -1
-
-        aligned_position[:,2] *= -1
-        aligned_T[:,2] *= -1
-        aligned_N[:,2] *= -1
-        aligned_B[:,2] *= -1  
-
-    # Redefine the cylindrical angle so that the first point is phi = 0 (the cylindrical representation should not change
-    assert np.sign(phi[-1]-phi[0]) > 0
-    scl = 1/(phi[-1]-phi[0])*2*np.pi
-    phi = (phi-phi[0])*scl
-
-    # Need to translate aligned vectors to cylindrical coordinates
-    def change_vector_to_cylindrical(phi, vector):
-        new_vector = np.zeros(np.shape(vector))
-        new_vector[:,0] = np.cos(phi) * vector[:,0] + np.sin(phi) * vector[:,1] 
-        new_vector[:,1] = -np.sin(phi) * vector[:,0] + np.cos(phi) * vector[:,1] 
-        new_vector[:,2] = vector[:,2] 
-
-        return new_vector
-        
-    aligned_T = change_vector_to_cylindrical(phi, aligned_T)
-    aligned_N = change_vector_to_cylindrical(phi, aligned_N)
-    aligned_B = change_vector_to_cylindrical(phi, aligned_B)
-    
-    ################
-    # SPLINES OF r #
-    ################
-    
-    # Periodic spline interpolation for kappa and tau (assume varphi is equally spaced)
-    flag_half = self.flag_half
-
-    def save_splines_FS(phi_grid, ell_grid, kappa = kappa, tau = tau):
-        # Keep the geometric quantities in cylindrical phi
-        self.R0_func = self.convert_to_spline(R, grid = phi_grid)
-        self.Z0_func = self.convert_to_spline(Z, grid = phi_grid)
-
-        if func:
-            kappa = kappa(ell_grid)
-            tau = tau(ell_grid)
-            
-        # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
-        # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in vylindrical phi.
-        self.normal_R_spline = self.convert_to_spline(aligned_N[:,0], grid = phi_grid, half_period = flag_half)
-        self.normal_phi_spline = self.convert_to_spline(aligned_N[:,1], grid = phi_grid, half_period = flag_half)
-        self.normal_z_spline = self.convert_to_spline(aligned_N[:,2], grid = phi_grid, half_period = flag_half)
-        self.binormal_R_spline = self.convert_to_spline(aligned_B[:,0], grid = phi_grid, half_period = flag_half)
-        self.binormal_phi_spline = self.convert_to_spline(aligned_B[:,1], grid = phi_grid, half_period = flag_half)
-        self.binormal_z_spline = self.convert_to_spline(aligned_B[:,2], grid = phi_grid, half_period = flag_half)
-        self.tangent_R_spline = self.convert_to_spline(aligned_T[:,0], grid = phi_grid)
-        self.tangent_phi_spline = self.convert_to_spline(aligned_T[:,1], grid = phi_grid)
-        self.tangent_z_spline = self.convert_to_spline(aligned_T[:,2], grid = phi_grid)
-
-    save_splines_FS(phi, ell)
-
-    smooth_frame = True
-    if smooth_frame:
-        smooth_FS_splines(self)
-        
-    ##############################
-    # EVALUATE ON A REGULAR GRID #
-    ##############################
-    # Do nothing to the curvature and torsion: these are assumed to be given in varphi grid
-    # Evaluate phi
-    nu_tot = varphi - phi # if smooth_frame else smooth_fourier(varphi - phi, self.nfp, 15, varphi, even = False) # It happens to work better without this smoothing
-    self.nu_spline_of_varphi = self.convert_to_spline(nu_tot, grid = varphi, periodic = True)
-    self.nu = self.nu_spline_of_varphi(varphi_in)
-    phi_out = varphi_in - self.nu
-    self.phi = phi_out
-    self.nu_spline = self.convert_to_spline(nu_tot, grid = phi, periodic = True)
-
-    # Evaluate geometry
-    self.R0 = self.R0_func(phi_out)
-    self.Z0 = self.Z0_func(phi_out)
-
-    nphi = self.nphi
-    self.normal_cylindrical = np.zeros((nphi, 3))
-    self.normal_cylindrical[:,0] = self.normal_R_spline(phi_out)
-    self.normal_cylindrical[:,1] = self.normal_phi_spline(phi_out)
-    self.normal_cylindrical[:,2] = self.normal_z_spline(phi_out)
-
-    # plt.plot(phi_out, self.normal_z_spline(phi_out))
-    # plt.plot(phi_out, aligned_N[:,2])
-    # plt.show()
-
-    self.binormal_cylindrical = np.zeros((nphi, 3))
-    self.binormal_cylindrical[:,0] = self.binormal_R_spline(phi_out)
-    self.binormal_cylindrical[:,1] = self.binormal_phi_spline(phi_out)
-    self.binormal_cylindrical[:,2] = self.binormal_z_spline(phi_out)
-
-    self.tangent_cylindrical = np.zeros((nphi, 3))
-    self.tangent_cylindrical[:,0] = self.tangent_R_spline(phi_out)
-    self.tangent_cylindrical[:,1] = self.tangent_phi_spline(phi_out)
-    self.tangent_cylindrical[:,2] = self.tangent_z_spline(phi_out)
-
-    #############
-    # PLOT AXIS #
-    #############
     if plot:
-        # Plotting
+        plt.figure()
+        plt.plot(ell, R, label = 'R')
+        plt.plot(ell, phi, label = '\phi')
+        plt.plot(ell, Z, label = 'Z')
+
+        # Plotting FS
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111, projection='3d')
 
         # Plotting normal and binormal vectors as arrows
-        origin = [self.R0 * np.cos(self.phi), self.R0 * np.sin(self.phi), self.Z0]
+        origin = [R * np.cos(phi), R * np.sin(phi), Z]
 
         # print(Theta)
         # Plot curve in cylindrical coordinates
         ax.plot(origin[0],origin[1],origin[2], label='Curve')
 
         # Plotting normal and binormal vectors as arrows
-        stp = int(nphi/10)
+        nphi = self.nphi
+        stp = int(nphi/30)
         num = int(nphi/stp)
 
         for i in range(num):
-            phi_i = self.phi[i*stp]
+            phi_i = phi[i*stp]
             ax.quiver(origin[0][i*stp], origin[1][i*stp], origin[2][i*stp], 
-                    self.normal_cylindrical[i*stp,0]*np.cos(phi_i) - self.normal_cylindrical[i*stp,1]*np.sin(phi_i), \
-                    self.normal_cylindrical[i*stp,0]*np.sin(phi_i) + self.normal_cylindrical[i*stp,1]*np.cos(phi_i), \
-                    self.normal_cylindrical[i*stp,2], 
-                    color='r', length=0.05, normalize=True, arrow_length_ratio=0.3)
+                    aligned_N[i*stp,0], aligned_N[i*stp,1], aligned_N[i*stp,2],
+                    color='r', length=0.1, normalize=True, arrow_length_ratio=0.3)
             ax.quiver(origin[0][i*stp], origin[1][i*stp], origin[2][i*stp], 
-                    self.binormal_cylindrical[i*stp,0]*np.cos(phi_i) - self.binormal_cylindrical[i*stp,1]*np.sin(phi_i), \
-                    self.binormal_cylindrical[i*stp,0]*np.sin(phi_i) + self.binormal_cylindrical[i*stp,1]*np.cos(phi_i), \
-                    self.binormal_cylindrical[i*stp,2], 
-                    color='g', length=0.05, normalize=True, arrow_length_ratio=0.3)
+                    aligned_B[i*stp,0], aligned_B[i*stp,1], aligned_B[i*stp,2], 
+                    color='g', length=0.1, normalize=True, arrow_length_ratio=0.3)
             ax.quiver(origin[0][i*stp], origin[1][i*stp], origin[2][i*stp], 
-                      self.tangent_cylindrical[i*stp,0]*np.cos(phi_i) - self.tangent_cylindrical[i*stp,1]*np.sin(phi_i), \
-                      self.tangent_cylindrical[i*stp,0]*np.sin(phi_i) + self.tangent_cylindrical[i*stp,1]*np.cos(phi_i), \
-                      self.tangent_cylindrical[i*stp,2], 
-                      color='b', length=0.05, normalize=True, arrow_length_ratio=0.3)
+                      aligned_T[i*stp,0], aligned_T[i*stp,1], aligned_T[i*stp,2], 
+                      color='b', length=0.1, normalize=True, arrow_length_ratio=0.3)
             
         # Set equal scale for all axes
         def _set_axes_radius(ax, origin, radius):
@@ -539,8 +470,363 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
-        plt.title('Curve with Normal and Binormal Vectors')
+        plt.title('Before cylindrical')
+
         plt.show()
+
+
+    # Output to close curve
+    mismatch = [T[-1]-T[0], N[-1]-(-1)**self.nfp*N[0],[R_ss[ind_ss_point]-R_ss[0], Z_ss[ind_ss_point]-Z_ss[0]], position[-1] - position[0]]
+    if minimal:
+        return mismatch
+
+    # Check whether the sense of the axis is in the positive cylindrical angle
+    phi = np.unwrap(phi)
+    phi0 = phi[0]
+    sense_axis = phi[1] - phi0
+    if sense_axis < 0:
+        print('WARNING! Wrong sense of the axis!')
+        self.no_cylindrical = True
+    else:
+        self.no_cylindrical = False
+
+    # # Correct sense of the axis
+    # sgn_change = 1
+    # if sense_axis < 0:
+    #     # Change coordinates accordingly
+    #     sgn_change = -1
+    #     Z = -Z
+    #     phi = -phi
+
+    #     aligned_position[:,1] *= -1
+    #     aligned_T[:,1] *= -1
+    #     aligned_N[:,1] *= -1
+    #     aligned_B[:,1] *= -1
+
+    #     aligned_position[:,2] *= -1
+    #     aligned_T[:,2] *= -1
+    #     aligned_N[:,2] *= -1
+    #     aligned_B[:,2] *= -1  
+
+    # Redefine the cylindrical angle so that the first point is phi = 0 (the cylindrical representation should not change
+    scl = np.abs((phi[-1]-phi[0])/(2*np.pi) - 1)
+    if scl > 1e-6:
+        print('WARNING! The closure of the axis leads to a cylindrical angle far from 2pi')
+        self.no_cylindrical = True
+    phi = phi-phi[0]
+    phi[-1] = 2*np.pi
+
+    if self.no_cylindrical:
+        # Take phi = varphi (not really true, but should not use phi)
+        self.phi = varphi_in
+        self.nu = np.zeros(len(varphi_in))
+        self.nu_spline = self.convert_to_spline(0, periodic = True)
+        self.nu_spline_of_varphi = self.convert_to_spline(0, periodic = True)
+        phi_out = varphi_in
+    else:
+        def shift_cylindrical(phi_0, vector):
+            new_vector = np.zeros(np.shape(vector))
+            new_vector[:,0] = vector[:,0] * np.cos(phi_0) + vector[:,1] * np.sin(phi_0)
+            new_vector[:,1] = vector[:,1] * np.cos(phi_0) - vector[:,0] * np.sin(phi_0)
+            new_vector[:,2] = vector[:,2] 
+
+            return new_vector
+
+        # Need to translate aligned vectors to cylindrical coordinates
+        def change_vector_to_cylindrical(phi, vector):
+            new_vector = np.zeros(np.shape(vector))
+            new_vector[:,0] = np.cos(phi) * vector[:,0] + np.sin(phi) * vector[:,1] 
+            new_vector[:,1] = -np.sin(phi) * vector[:,0] + np.cos(phi) * vector[:,1] 
+            new_vector[:,2] = vector[:,2] 
+
+            return new_vector
+        
+        # Conversion should use the cylindrical angle before redefinition of phi
+        aligned_T = change_vector_to_cylindrical(phi + phi0, aligned_T)
+        aligned_N = change_vector_to_cylindrical(phi + phi0, aligned_N)
+        aligned_B = change_vector_to_cylindrical(phi + phi0, aligned_B)
+        
+        if plot:
+            # Plotting
+            fig = plt.figure(figsize=(10, 8))
+            ax = fig.add_subplot(111, projection='3d')
+
+            # Plotting normal and binormal vectors as arrows
+            origin = [R * np.cos(phi), R * np.sin(phi), Z]
+
+            # print(Theta)
+            # Plot curve in cylindrical coordinates
+            ax.plot(origin[0],origin[1],origin[2], label='Curve')
+
+            # Plotting normal and binormal vectors as arrows
+            nphi = self.nphi
+            stp = int(nphi/30)
+            num = int(nphi/stp)
+
+            for i in range(num):
+                phi_i = phi[i*stp]
+                ax.quiver(origin[0][i*stp], origin[1][i*stp], origin[2][i*stp], 
+                        aligned_N[i*stp,0]*np.cos(phi_i) - aligned_N[i*stp,1]*np.sin(phi_i), \
+                        aligned_N[i*stp,0]*np.sin(phi_i) + aligned_N[i*stp,1]*np.cos(phi_i), \
+                        aligned_N[i*stp,2], 
+                        color='r', length=0.1, normalize=True, arrow_length_ratio=0.3)
+                ax.quiver(origin[0][i*stp], origin[1][i*stp], origin[2][i*stp], 
+                        aligned_B[i*stp,0]*np.cos(phi_i) - aligned_B[i*stp,1]*np.sin(phi_i), \
+                        aligned_B[i*stp,0]*np.sin(phi_i) + aligned_B[i*stp,1]*np.cos(phi_i), \
+                        aligned_B[i*stp,2], 
+                        color='g', length=0.1, normalize=True, arrow_length_ratio=0.3)
+                ax.quiver(origin[0][i*stp], origin[1][i*stp], origin[2][i*stp], 
+                        aligned_T[i*stp,0]*np.cos(phi_i) - aligned_T[i*stp,1]*np.sin(phi_i), \
+                        aligned_T[i*stp,0]*np.sin(phi_i) + aligned_T[i*stp,1]*np.cos(phi_i), \
+                        aligned_T[i*stp,2], 
+                        color='b', length=0.1, normalize=True, arrow_length_ratio=0.3)
+                
+            # Set equal scale for all axes
+            def _set_axes_radius(ax, origin, radius):
+                x, y, z = origin
+                ax.set_xlim3d([x - radius, x + radius])
+                ax.set_ylim3d([y - radius, y + radius])
+                ax.set_zlim3d([z - radius, z + radius])
+
+            def set_axes_equal(ax: plt.Axes):
+                """Set 3D plot axes to equal scale.
+
+                Make axes of 3D plot have equal scale so that spheres appear as
+                spheres and cubes as cubes.  Required since `ax.axis('equal')`
+                and `ax.set_aspect('equal')` don't work on 3D.
+                """
+                limits = np.array([
+                    ax.get_xlim3d(),
+                    ax.get_ylim3d(),
+                    ax.get_zlim3d(),
+                ])
+                origin = np.mean(limits, axis=1)
+                radius = 0.5 * np.max(np.abs(limits[:, 1] - limits[:, 0]))
+                _set_axes_radius(ax, origin, radius)
+
+            ax.set_box_aspect([1,1,1])
+            set_axes_equal(ax)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            plt.title('Cylindrical')
+
+        ################
+        # SPLINES OF r #
+        ################
+        
+        # Periodic spline interpolation for kappa and tau (assume varphi is equally spaced)
+
+        def save_splines_FS(phi_grid, ell_grid, kappa = kappa, tau = tau):
+            # Keep the geometric quantities in cylindrical phi
+            self.R0_func = self.convert_to_spline(R, grid = phi_grid)
+            self.Z0_func = self.convert_to_spline(Z, grid = phi_grid)
+
+            if func:
+                kappa = kappa(ell_grid)
+                tau = tau(ell_grid)
+                
+            # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
+            # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in cylindrical phi.
+            self.normal_R_spline = self.convert_to_spline(aligned_N[:,0], grid = phi_grid, half_period = flag_half)
+            self.normal_phi_spline = self.convert_to_spline(aligned_N[:,1], grid = phi_grid, half_period = flag_half)
+            self.normal_z_spline = self.convert_to_spline(aligned_N[:,2], grid = phi_grid, half_period = flag_half)
+            self.binormal_R_spline = self.convert_to_spline(aligned_B[:,0], grid = phi_grid, half_period = flag_half)
+            self.binormal_phi_spline = self.convert_to_spline(aligned_B[:,1], grid = phi_grid, half_period = flag_half)
+            self.binormal_z_spline = self.convert_to_spline(aligned_B[:,2], grid = phi_grid, half_period = flag_half)
+            self.tangent_R_spline = self.convert_to_spline(aligned_T[:,0], grid = phi_grid)
+            self.tangent_phi_spline = self.convert_to_spline(aligned_T[:,1], grid = phi_grid)
+            self.tangent_z_spline = self.convert_to_spline(aligned_T[:,2], grid = phi_grid)
+
+        def check_spline_FS(phi_grid):
+            phi_ext = np.linspace(0.0, 2*np.pi, 1000)
+            plt.figure()
+            plt.suptitle(r"$Check interpolation$")
+            plt.subplot(4,3,1)
+            plt.plot(phi_grid, aligned_N[:,0], 'k')
+            plt.plot(phi_ext, self.normal_R_spline(phi_ext), 'k--')
+            plt.subplot(4,3,2)
+            plt.plot(phi_grid, aligned_N[:,1], 'k')
+            plt.plot(phi_ext, self.normal_phi_spline(phi_ext), 'k--')
+            plt.subplot(4,3,3)
+            plt.plot(phi_grid, aligned_N[:,2], 'k')
+            plt.plot(phi_ext, self.normal_z_spline(phi_ext), 'k--')
+            plt.subplot(4,3,4)
+            plt.plot(phi_grid, aligned_B[:,0], 'k')
+            plt.plot(phi_ext, self.binormal_R_spline(phi_ext), 'k--')
+            plt.subplot(4,3,5)
+            plt.plot(phi_grid, aligned_B[:,1], 'k')
+            plt.plot(phi_ext, self.binormal_phi_spline(phi_ext), 'k--')
+            plt.subplot(4,3,6)
+            plt.plot(phi_grid, aligned_B[:,2], 'k')
+            plt.plot(phi_ext, self.binormal_z_spline(phi_ext), 'k--')
+            plt.subplot(4,3,7)
+            plt.plot(phi_grid, aligned_T[:,0], 'k')
+            plt.plot(phi_ext, self.tangent_R_spline(phi_ext), 'k--')
+            plt.subplot(4,3,8)
+            plt.plot(phi_grid, aligned_T[:,1], 'k')
+            plt.plot(phi_ext, self.tangent_phi_spline(phi_ext), 'k--')
+            plt.subplot(4,3,9)
+            plt.plot(phi_grid, aligned_T[:,2], 'k')
+            plt.plot(phi_ext, self.tangent_z_spline(phi_ext), 'k--')
+            plt.subplot(4,3,10)
+            plt.plot(phi_grid, R, 'k')
+            plt.plot(phi_ext, self.R0_func(phi_ext), 'k--')
+            plt.subplot(4,3,11)
+            plt.plot(phi_grid, Z, 'k')
+            plt.plot(phi_ext, self.Z0_func(phi_ext), 'k--')
+            
+        save_splines_FS(phi, ell)
+
+        if plot:
+            check_spline_FS(phi)
+
+        # The smoothing approach does not work for N=1, would need revisiting
+        smooth_frame = True
+        if smooth_frame and self.nfp > 1:
+            smooth_FS_splines(self)
+            
+        ##############################
+        # EVALUATE ON A REGULAR GRID #
+        ##############################
+        # Do nothing to the curvature and torsion: these are assumed to be given in varphi grid
+        # Evaluate phi
+        nu_tot = varphi - phi # if smooth_frame else smooth_fourier(varphi - phi, self.nfp, 15, varphi, even = False) # It happens to work better without this smoothing
+        self.nu_spline_of_varphi = self.convert_to_spline(nu_tot, grid = varphi, periodic = True)
+        self.nu = self.nu_spline_of_varphi(varphi_in)
+        phi_out = varphi_in - self.nu
+        self.phi = phi_out
+        self.nu_spline = self.convert_to_spline(nu_tot, grid = phi, periodic = True)
+
+        # Evaluate geometry
+        self.R0 = self.R0_func(phi_out)
+        self.Z0 = self.Z0_func(phi_out)
+
+        nphi = self.nphi
+        self.normal_cylindrical = np.zeros((nphi, 3))
+        self.normal_cylindrical[:,0] = self.normal_R_spline(phi_out)
+        self.normal_cylindrical[:,1] = self.normal_phi_spline(phi_out)
+        self.normal_cylindrical[:,2] = self.normal_z_spline(phi_out)
+
+        self.binormal_cylindrical = np.zeros((nphi, 3))
+        self.binormal_cylindrical[:,0] = self.binormal_R_spline(phi_out)
+        self.binormal_cylindrical[:,1] = self.binormal_phi_spline(phi_out)
+        self.binormal_cylindrical[:,2] = self.binormal_z_spline(phi_out)
+
+        self.tangent_cylindrical = np.zeros((nphi, 3))
+        self.tangent_cylindrical[:,0] = self.tangent_R_spline(phi_out)
+        self.tangent_cylindrical[:,1] = self.tangent_phi_spline(phi_out)
+        self.tangent_cylindrical[:,2] = self.tangent_z_spline(phi_out)
+
+        if plot:
+            phi_ext = np.linspace(0.0, 2*np.pi, 1000)
+            plt.suptitle('Smoothed versions')
+            plt.figure()
+            plt.subplot(4,3,1)
+            plt.plot(phi, aligned_N[:,0], 'k')
+            plt.plot(phi_out, self.normal_cylindrical[:,0], 'k--')
+            plt.subplot(4,3,2)
+            plt.plot(phi, aligned_N[:,1], 'k')
+            plt.plot(phi_out, self.normal_cylindrical[:,1], 'k--')
+            plt.subplot(4,3,3)
+            plt.plot(phi, aligned_N[:,2], 'k')
+            plt.plot(phi_out, self.normal_cylindrical[:,2], 'k--')
+            plt.subplot(4,3,4)
+            plt.plot(phi, aligned_T[:,0], 'k')
+            plt.plot(phi_out, self.tangent_cylindrical[:,0], 'k--')
+            plt.subplot(4,3,5)
+            plt.plot(phi, aligned_T[:,1], 'k')
+            plt.plot(phi_out, self.tangent_cylindrical[:,1], 'k--')
+            plt.subplot(4,3,6)
+            plt.plot(phi, aligned_T[:,2], 'k')
+            plt.plot(phi_out, self.tangent_cylindrical[:,2], 'k--')
+            plt.subplot(4,3,7)
+            plt.plot(phi, aligned_B[:,0], 'k')
+            plt.plot(phi_out, self.binormal_cylindrical[:,0], 'k--')
+            plt.subplot(4,3,8)
+            plt.plot(phi, aligned_B[:,1], 'k')
+            plt.plot(phi_out, self.binormal_cylindrical[:,1], 'k--')
+            plt.subplot(4,3,9)
+            plt.plot(phi, aligned_B[:,2], 'k')
+            plt.plot(phi_out, self.binormal_cylindrical[:,2], 'k--')
+            plt.show()
+
+
+        #############
+        # PLOT AXIS #
+        #############
+        if plot:
+            # Plotting
+            fig = plt.figure(figsize=(10, 8))
+            ax = fig.add_subplot(111, projection='3d')
+
+            # Plotting normal and binormal vectors as arrows
+            origin = [self.R0 * np.cos(self.phi), self.R0 * np.sin(self.phi), self.Z0]
+
+            # print(Theta)
+            # Plot curve in cylindrical coordinates
+            ax.plot(origin[0],origin[1],origin[2], label='Curve')
+
+            # Plotting normal and binormal vectors as arrows
+            stp = int(nphi/30)
+            num = int(nphi/stp)
+
+            for i in range(num):
+                phi_i = self.phi[i*stp]
+                ax.quiver(origin[0][i*stp], origin[1][i*stp], origin[2][i*stp], 
+                        self.normal_cylindrical[i*stp,0]*np.cos(phi_i) - self.normal_cylindrical[i*stp,1]*np.sin(phi_i), \
+                        self.normal_cylindrical[i*stp,0]*np.sin(phi_i) + self.normal_cylindrical[i*stp,1]*np.cos(phi_i), \
+                        self.normal_cylindrical[i*stp,2], 
+                        color='r', length=0.1, normalize=True, arrow_length_ratio=0.3)
+                ax.quiver(origin[0][i*stp], origin[1][i*stp], origin[2][i*stp], 
+                        self.binormal_cylindrical[i*stp,0]*np.cos(phi_i) - self.binormal_cylindrical[i*stp,1]*np.sin(phi_i), \
+                        self.binormal_cylindrical[i*stp,0]*np.sin(phi_i) + self.binormal_cylindrical[i*stp,1]*np.cos(phi_i), \
+                        self.binormal_cylindrical[i*stp,2], 
+                        color='g', length=0.1, normalize=True, arrow_length_ratio=0.3)
+                ax.quiver(origin[0][i*stp], origin[1][i*stp], origin[2][i*stp], 
+                        self.tangent_cylindrical[i*stp,0]*np.cos(phi_i) - self.tangent_cylindrical[i*stp,1]*np.sin(phi_i), \
+                        self.tangent_cylindrical[i*stp,0]*np.sin(phi_i) + self.tangent_cylindrical[i*stp,1]*np.cos(phi_i), \
+                        self.tangent_cylindrical[i*stp,2], 
+                        color='b', length=0.1, normalize=True, arrow_length_ratio=0.3)
+                
+            # Set equal scale for all axes
+            def _set_axes_radius(ax, origin, radius):
+                x, y, z = origin
+                ax.set_xlim3d([x - radius, x + radius])
+                ax.set_ylim3d([y - radius, y + radius])
+                ax.set_zlim3d([z - radius, z + radius])
+
+            def set_axes_equal(ax: plt.Axes):
+                """Set 3D plot axes to equal scale.
+
+                Make axes of 3D plot have equal scale so that spheres appear as
+                spheres and cubes as cubes.  Required since `ax.axis('equal')`
+                and `ax.set_aspect('equal')` don't work on 3D.
+                """
+                limits = np.array([
+                    ax.get_xlim3d(),
+                    ax.get_ylim3d(),
+                    ax.get_zlim3d(),
+                ])
+                origin = np.mean(limits, axis=1)
+                radius = 0.5 * np.max(np.abs(limits[:, 1] - limits[:, 0]))
+                _set_axes_radius(ax, origin, radius)
+
+            ax.set_box_aspect([1,1,1])
+            set_axes_equal(ax)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            plt.title('Curve with Normal and Binormal Vectors')
+
+            plt.figure()
+            plt.plot(self.phi, self.curvature, '--')
+            phi_new = np.linspace(0,2*np.pi,100)
+            plt.plot(phi_new, self.normal_R_spline(phi_new))
+            plt.plot(phi_new, self.normal_phi_spline(phi_new))
+            plt.plot(phi_new, self.normal_z_spline(phi_new))
+            plt.show()
+
 
     return mismatch
 
@@ -550,7 +836,7 @@ def smooth_FS_splines(stel):
     ##############
     nfp = stel.nfp
     ntor = 15
-    phi_reg = np.linspace(0, 1.0, stel.nphi) * 2*np.pi/stel.nfp
+    phi_reg = np.linspace(0,  2*np.pi/stel.nfp, stel.nphi, endpoint=False)
     rc, rs, zc, zs = to_Fourier_axis(stel.R0_func(phi_reg), stel.Z0_func(phi_reg), nfp, ntor = ntor, lasym = True, phi_in = phi_reg)
     R0_temp = np.zeros(stel.nphi)
     Z0_temp = np.zeros(stel.nphi)
@@ -570,7 +856,7 @@ def smooth_FS_splines(stel):
         # window = np.hamming(len(data))
         # data = window * data
 
-        phi_in = np.linspace(0.0, 1.0, nphi, endpoint=False) * 2*np.pi
+        phi_in = np.linspace(0.0,2*np.pi, nphi, endpoint=False)
         phi_out = phi_in.copy()
 
         # Harmonic components of axis position

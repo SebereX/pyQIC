@@ -487,7 +487,7 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
             mod_X2c = np.zeros((len(well), nphi))
             mod_X2s = np.zeros((len(well), nphi))
             for j_well, well_val in enumerate(well):
-                eps_ideal = (num + well_val)/den if (stel.d2_volume_d_psi2 + well_val) > 0 else 0
+                eps_ideal = (num + well_val)/den
                 ## Required shaping ##
                 shape = sh_Lambda - eps_ideal * sh_G_tot
                 mod_X2c[j_well, :] = shape[:nphi]
@@ -500,7 +500,7 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
                     assert np.abs(mag_well_min + well_val + V_pp_est).max() < 1e-10, Warning("V'' problems")
 
         else:
-            eps_ideal = (num + well)/den if (stel.d2_volume_d_psi2 + well) > 0 else 0
+            eps_ideal = (num + well)/den
 
             ## Required shaping ##
             shape = np.linalg.solve(M_mat, Lambda - eps_ideal * G_tot)

@@ -74,15 +74,16 @@ def init_axis(self, omn_complete = True):
         if self.solve_geo:
             _ = invert_frenet_axis(self, self.curvature, self.torsion, self.ell, self.varphi, full_axis = True, func = flag_func, flip = flag_half)
             
-            # Obtain axis description as Fourier components : important for output to VMEC (at least approximately)
-            ntor = 15
-            rc, rs, zc, zs = to_Fourier_axis(self.R0, self.Z0, self.nfp, ntor = ntor, lasym = True, phi_in = self.phi)
-            self.Raxis = {"type": "fourier", "input_value": {}}
-            self.Zaxis = {"type": "fourier", "input_value": {}}
-            self.Raxis["input_value"]["cos"] = rc
-            self.Raxis["input_value"]["sin"] = rs
-            self.Zaxis["input_value"]["cos"] = zc
-            self.Zaxis["input_value"]["sin"] = zs
+            if not self.no_cylindrical:
+                # Obtain axis description as Fourier components : important for output to VMEC (at least approximately)
+                ntor = 15
+                rc, rs, zc, zs = to_Fourier_axis(self.R0, self.Z0, self.nfp, ntor = ntor, lasym = True, phi_in = self.phi)
+                self.Raxis = {"type": "fourier", "input_value": {}}
+                self.Zaxis = {"type": "fourier", "input_value": {}}
+                self.Raxis["input_value"]["cos"] = rc
+                self.Raxis["input_value"]["sin"] = rs
+                self.Zaxis["input_value"]["cos"] = zc
+                self.Zaxis["input_value"]["sin"] = zs
 
         # Computing dl/dphi = dl/dvarphi dvarphi/dphi
         # Need to separate secular parts
@@ -151,6 +152,7 @@ def init_axis(self, omn_complete = True):
         self.d_d_d_varphi_at_0 = np.matmul(self.d_d_varphi_ext, self.d)[0]
 
     else: 
+        self.no_cylindrical = False
         self.reg_grid = 'phi'
         # When R/Z coordinates are provided, then we need to compute the Frenet frame
         ###############################

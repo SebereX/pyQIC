@@ -332,6 +332,7 @@ def _make_buffer(self, buffer_method, iota):
     self.alpha_cent = alpha_cent
     assert np.abs(alpha_cent - np.pi/2) < 1e-6, "Problems with the centre of alpha!"
     self.alpha_buf = self.alpha - iota * varphi_cent - alpha_cent
+    self.alpha_cent = alpha_cent
 
     return
 
