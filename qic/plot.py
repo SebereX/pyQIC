@@ -11,8 +11,12 @@ from matplotlib.colors import LightSource
 import matplotlib.ticker as tck
 from .util import to_Fourier
 import mplcursors
+from tqdm import tqdm
+from multiprocessing import Manager, Pool
+from scipy.optimize import fsolve
+import os
 
-def plot(self, newfigure=True, show=True, savefig=None):
+def plot(self, newfigure=True, show=True, savefig=None, plot_geo = False):
     """
     Generate a matplotlib figure with an array of plots, showing the
     toroidally varying properties of the configuration.
@@ -65,7 +69,7 @@ def plot(self, newfigure=True, show=True, savefig=None):
             plt.ylim(bottom=0)
         plt.xlim((0, self.phi[-1]))
 
-    if not self.frenet:
+    if not self.frenet and not self.no_cylindrical:
         subplot('R0')
         subplot('Z0')
         subplot('R0p')
@@ -74,9 +78,13 @@ def plot(self, newfigure=True, show=True, savefig=None):
         subplot('Z0pp')
         subplot('R0ppp')
         subplot('Z0ppp')
+    if plot_geo and not self.no_cylindrical:
+        subplot('R0')
+        subplot('Z0')
     subplot('curvature')
     subplot('torsion')
     subplot('sigma')
+    subplot('B0')
     subplot('B1s')
     subplot('B1c')
     subplot('X1s')
@@ -419,11 +427,537 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
     .. image:: poloidalplot.png
        :width: 200
     """
-    x_2D_plot, y_2D_plot, z_2D_plot, R_2D_plot = self.get_boundary(r=r, ntheta=ntheta, nphi=nphi, ntheta_fourier=ntheta_fourier, \
+    if self.no_cylindrical:
+        plot_boundary_cartesians(self, r, ntheta, nphi, ntheta_fourier, nsections, mpol, ntor,
+         fieldlines, savefig, colormap, azim_default, plot_3d, n_field_lines,
+         show, axis, legend, legend_text, parallel, **kwargs)
+    else:
+        x_2D_plot, y_2D_plot, z_2D_plot, R_2D_plot = self.get_boundary(r=r, ntheta=ntheta, nphi=nphi, ntheta_fourier=ntheta_fourier, \
+                                                                        mpol = mpol, ntor = ntor, parallel = parallel)
+        phi = np.linspace(0, 2 * np.pi, nphi)  # Endpoint = true and no nfp factor, because this is what is used in get_boundary()
+        R_2D_spline = interp1d(phi, R_2D_plot, axis=1)
+        z_2D_spline = interp1d(phi, z_2D_plot, axis=1)
+        ## Poloidal plot
+        phi1dplot_RZ = np.linspace(0, 2 * np.pi / self.nfp, nsections, endpoint=False)
+        if axis == None:
+            fig_poloidal = plt.figure(figsize=(7, 5), dpi=80)
+            ax  = plt.gca()
+        else:
+            ax = axis
+
+        flag_color = False
+        if "color" in kwargs:
+            color = kwargs["color"]
+            kwargs.pop("color")
+            flag_color = True
+
+        for i, phi in enumerate(phi1dplot_RZ):
+            phinorm = phi * self.nfp / (2 * np.pi)
+            if phinorm == 0:
+                label = r'$\phi$=0'
+            elif phinorm == 0.125:
+                label = r'$\phi={\pi}/$' + str(4 * self.nfp)
+            elif phinorm == 0.25:
+                label = r'$\phi={\pi}/$' + str(2 * self.nfp)
+            elif phinorm == 0.375:
+                label = r'$\phi={3\pi}/$' + str(4 * self.nfp)
+            elif phinorm == 0.5:
+                label = r'$\phi=\pi/$' + str(self.nfp)
+            elif phinorm == 0.625:
+                label = r'$\phi={5\pi}/$' + str(4 * self.nfp)
+            elif phinorm == 0.75:
+                label = r'$\phi={3\pi}/$' + str(2 * self.nfp)
+            elif phinorm == 0.875:
+                label = r'$\phi={7\pi}/$' + str(4 * self.nfp)
+            else:
+                label = '_nolegend_'
+            if not flag_color:
+                color = next(ax._get_lines.prop_cycler)['color']
+
+            # Plot location of the axis
+            if not legend_text is None:
+                if i == 0:
+                    plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, label=legend_text, color=color)
+                else:
+                    plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, color=color)
+            else:
+                plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, label=label, color=color)
+            if plot_3d == True:
+                # Plot poloidal cross-section
+                plt.plot(R_2D_spline(phi), z_2D_spline(phi), color=color)
+            else:
+                plt.plot(R_2D_spline(phi), z_2D_spline(phi), color=color, **kwargs)
+        plt.xlabel('R [m]', fontsize=14)
+        plt.ylabel('Z [m]', fontsize=14)
+        ax.tick_params(axis='both', which='major', labelsize=12)
+        ax.tick_params(axis='both', which='minor', labelsize=12)
+        if legend:
+            plt.legend(loc=2, prop={'size': 8})
+        plt.tight_layout()
+        ax.set_aspect('equal')
+        if savefig != None:
+            fig_poloidal.savefig(savefig + '_poloidal.pdf')
+
+        ## 3D plot
+        # Set the default azimuthal angle of view in the 3D plot
+        # QH stellarators look rotated in the phi direction when
+        # azim_default = 0
+        if plot_3d==True:
+            if azim_default == None:
+                if self.omn == True:
+                    azim_default = -90
+                else:
+                    if self.helicity == 0:
+                        azim_default = 0
+                    else:
+                        azim_default = 45
+                # Define the magnetic field modulus and create its theta,phi array
+                # The norm instance will be used as the colormap for the surface
+                theta1D = np.linspace(0, 2 * np.pi, ntheta)
+                phi1D = np.linspace(0, 2 * np.pi, nphi)
+                phi2D, theta2D = np.meshgrid(phi1D, theta1D)
+                # Create a color map similar to viridis 
+                Bmag = self.B_mag(r, theta2D, phi2D)
+                norm = clr.Normalize(vmin=Bmag.min(), vmax=Bmag.max())
+                if fieldlines==False:
+                    if colormap==None:
+                        # Cmap similar to quasisymmetry papers
+                        # cmap = clr.LinearSegmentedColormap.from_list('qs_papers',['#4423bb','#4940f4','#2e6dff','#0097f2','#00bacc','#00cb93','#00cb93','#7ccd30','#fbdc00','#f9fc00'], N=256)
+                        cmap = cm.RdBu_r
+                        # Add a light source so the surface looks brighter
+                        ls = LightSource(azdeg=0, altdeg=10)
+                        cmap_plot = ls.shade(Bmag, cmap, norm=norm)
+                    # Create the 3D figure and choose the following parameters:
+                    # gsParams: extension in the top, bottom, left right directions for each subplot
+                    # elevParams: elevation (distance to the plot) for each subplot
+                    fig = plt.figure(constrained_layout=False, figsize=(4.5, 8))
+                    gsParams = [[1.02,-0.3,0.,0.85], [1.09,-0.3,0.,0.85], [1.12,-0.15,0.,0.85]]
+                    elevParams = [90, 30, 5]
+                    for i in range(len(gsParams)):
+                        gs = fig.add_gridspec(nrows=3, ncols=1,
+                                            top=gsParams[i][0], bottom=gsParams[i][1],
+                                            left=gsParams[i][2], right=gsParams[i][3],
+                                            hspace=0.0, wspace=0.0)
+                        ax = fig.add_subplot(gs[i, 0], projection='3d')
+                        create_subplot(ax, x_2D_plot, y_2D_plot, z_2D_plot, cmap_plot, elev=elevParams[i], azim=azim_default, **kwargs)
+                    # Create color bar with axis placed on the right
+                    cbar_ax = fig.add_axes([0.85, 0.2, 0.03, 0.6])
+                    m = cm.ScalarMappable(cmap=cmap, norm=norm)
+                    m.set_array([])
+                    cbar = plt.colorbar(m, cax=cbar_ax)
+                    cbar.ax.set_title(r'$|B| [T]$')
+                    # Save figure
+                    if savefig != None:
+                        fig.savefig(savefig + '3D.png')
+                    if show:
+                        # Show figures
+                        plt.show()
+                else:
+                    ## X, Y, Z arrays for the field lines
+                    # Plot different field lines corresponding to different alphas
+                    # where alpha=theta-iota*varphi with (theta,varphi) the Boozer angles
+                    #alphas = [0, np.pi/4, np.pi/2, 3*np.pi/4, np.pi, 5*np.pi/4, 3*np.pi/2, 7*np.pi/4]
+                    alphas = np.linspace(0.7, 2 * np.pi + 0.7, n_field_lines, endpoint=False)
+                    # Create the field line arrays
+                    fieldline_X, fieldline_Y, fieldline_Z = create_field_lines(self, alphas, x_2D_plot, y_2D_plot, z_2D_plot)
+                    # Define the rotation arrays for the subplots
+                    degrees_array_x = [0., 81.]#[0., -66., 81.] # degrees for rotation in x
+                    degrees_array_z = [azim_default, azim_default]#[azim_default, azim_default, azim_default] # degrees for rotation in z
+                    shift_array   = [-0.8, 1.0]#[-0.9, 0.6, 1.8]
+                    # Import mayavi and rotation packages (takes a few seconds)
+                    from mayavi import mlab
+                    from scipy.spatial.transform import Rotation as R
+                    if show:
+                        # Show RZ plot
+                        plt.show()
+                    # Create 3D figure
+                    fig_3d = mlab.figure(bgcolor=(1,1,1), size=(580,600))
+                    # Create subplots
+                    create_subplot_mayavi(mlab, R, alphas, x_2D_plot, y_2D_plot, z_2D_plot,
+                                        fieldline_X, fieldline_Y, fieldline_Z,
+                                        Bmag, degrees_array_x, degrees_array_z, shift_array)
+                    # Create a good camera angle
+                    mlab.view(azimuth=0, elevation=0, distance=8.0, focalpoint=(0,0,0), figure=fig_3d)
+                    # Create the colorbar and change its properties
+                    cb = mlab.colorbar(orientation='vertical', title='|B| [T]', nb_labels=7)
+                    cb.scalar_bar.unconstrained_font_size = True
+                    cb.label_text_property.font_family = 'times'
+                    cb.label_text_property.bold = 0
+                    cb.label_text_property.font_size=20
+                    cb.label_text_property.color=(0,0,0)
+                    cb.title_text_property.font_family = 'times'
+                    cb.title_text_property.font_size=20
+                    cb.title_text_property.color=(0,0,0)
+                    cb.title_text_property.bold = 1
+                    # Save figure
+                    if savefig != None:
+                        mlab.savefig(filename=savefig+'3D_fieldlines.png', figure=fig_3d)
+                    if show:
+                        # Show mayavi plot
+                        mlab.show()
+                        # Close mayavi plots
+                        mlab.close(all=True)
+        else:
+            if show:
+                # Show figures
+                plt.show()
+        return ax
+
+
+def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, ntor=25, parallel=True, xsec = True, verbose = False):
+    '''
+    Function that, for a given near-axis radial coordinate r, outputs
+    the [X,Y,Z] components of the boundary using the cartesian coords. The resolution along the toroidal
+    angle phi is equal to the resolution nphi for the axis, while ntheta
+    is specified by the used.
+
+    Args:
+      r (float): near-axis radius r where to create the surface
+      ntheta (int): Number of grid points to plot in the poloidal angle.
+      nphi   (int): Number of grid points to plot in the toroidal angle.
+      ntheta_fourier (int): Resolution in the Fourier transform to cylindrical coordinates
+      mpol: resolution in poloidal Fourier space
+      ntor: resolution in toroidal Fourier space
+    '''
+    if self.nfp > 1 and verbose: print('Should be used only for N=1')
+    # Get surface shape parametrised by phi (on-axis) and theta
+    theta = np.linspace(0, 2 * np.pi, ntheta, endpoint=True)
+    varphi = np.linspace(0, 2 * np.pi, nphi, endpoint=True)
+    X_2D = np.zeros((ntheta, nphi))
+    Y_2D = np.zeros((ntheta, nphi))
+    X_fs_2D = np.zeros((ntheta, nphi))
+    Y_fs_2D = np.zeros((ntheta, nphi))
+    Z_2D = np.zeros((ntheta, nphi))
+
+    if not parallel:
+        with tqdm(desc='Computing different theta...', total=ntheta, disable=not verbose) as pbar:
+            for j_theta in range(ntheta):
+                costheta = np.cos(theta[j_theta])
+                sintheta = np.sin(theta[j_theta])
+                X_at_this_theta = r * (self.X1c_untwisted * costheta + self.X1s_untwisted * sintheta)
+                Y_at_this_theta = r * (self.Y1c_untwisted * costheta + self.Y1s_untwisted * sintheta)
+                Z_at_this_theta = 0 * X_at_this_theta
+                if self.order != 'r1':
+                    # We need O(r^2) terms:
+                    cos2theta = np.cos(2 * theta[j_theta])
+                    sin2theta = np.sin(2 * theta[j_theta])
+                    X_at_this_theta += r * r * (self.X20_untwisted + self.X2c_untwisted * cos2theta + self.X2s_untwisted * sin2theta)
+                    Y_at_this_theta += r * r * (self.Y20_untwisted + self.Y2c_untwisted * cos2theta + self.Y2s_untwisted * sin2theta)
+                    Z_at_this_theta += r * r * (self.Z20_untwisted + self.Z2c_untwisted * cos2theta + self.Z2s_untwisted * sin2theta)
+                    if self.order == 'r3':
+                        # We need O(r^3) terms:
+                        costheta = np.cos(theta[j_theta])
+                        sintheta = np.sin(theta[j_theta])
+                        cos3theta = np.cos(3 * theta[j_theta])
+                        sin3theta = np.sin(3 * theta[j_theta])
+                        r3 = r * r * r
+                        X_at_this_theta += r3 * (self.X3c1_untwisted * costheta + self.X3s1_untwisted * sintheta
+                                                + self.X3c3_untwisted * cos3theta + self.X3s3_untwisted * sin3theta)
+                        Y_at_this_theta += r3 * (self.Y3c1_untwisted * costheta + self.Y3s1_untwisted * sintheta
+                                                + self.Y3c3_untwisted * cos3theta + self.Y3s3_untwisted * sin3theta)
+                        Z_at_this_theta += r3 * (self.Z3c1_untwisted * costheta + self.Z3s1_untwisted * sintheta
+                                                + self.Z3c3_untwisted * cos3theta + self.Z3s3_untwisted * sin3theta)
+                        
+                # If half helicity axes are considered, we need to use the extended domain : 
+                # within the 2*pi domain of the axis everything is smooth (as is the signed frame)
+                # but not across phi = 0
+                X_spline = self.convert_to_spline(X_at_this_theta, half_period=self.flag_half, varphi=True)
+                Y_spline = self.convert_to_spline(Y_at_this_theta, half_period=self.flag_half, varphi=True)
+                Z_spline = self.convert_to_spline(Z_at_this_theta, varphi=True)
+        
+                X_cart_sp = lambda p: self.x0_cart_spline(p) + X_spline(p) * self.normal_x_cart_spline(p) + \
+                                                                Y_spline(p) * self.binormal_x_cart_spline(p) + \
+                                                                Z_spline(p) * self.tangent_x_cart_spline(p)
+                X_2D[j_theta, :] = X_cart_sp(varphi)
+                
+                Y_cart_sp = lambda p: self.y0_cart_spline(p) + X_spline(p) * self.normal_y_cart_spline(p) + \
+                                                                Y_spline(p) * self.binormal_y_cart_spline(p) + \
+                                                                Z_spline(p) * self.tangent_y_cart_spline(p)
+                Y_2D[j_theta, :] = Y_cart_sp(varphi)
+                
+                Z_cart_sp = lambda p: self.z0_cart_spline(p) + X_spline(p) * self.normal_z_cart_spline(p) + \
+                                                                Y_spline(p) * self.binormal_z_cart_spline(p) + \
+                                                                Z_spline(p) * self.tangent_z_cart_spline(p)
+                Z_2D[j_theta, :] = Z_cart_sp(varphi)
+
+                if xsec:
+                    # Find the cross-section normal to the axis
+                    axis_point = np.array([self.x0_cart_spline(varphi), self.y0_cart_spline(varphi), self.z0_cart_spline(varphi)])
+                    fdot = lambda ph: np.einsum('ij,ij->j', np.array([X_cart_sp(ph), Y_cart_sp(ph), Z_cart_sp(ph)]) - axis_point, \
+                        np.array([self.tangent_x_cart_spline(varphi), self.tangent_y_cart_spline(varphi), self.tangent_z_cart_spline(varphi)]))
+                    root = fsolve(fdot, varphi)
+
+                    # Project to X,Y locally
+                    pos = np.array([X_cart_sp(root), Y_cart_sp(root), Z_cart_sp(root)])
+                    normal = np.array([self.normal_x_cart_spline(varphi), self.normal_y_cart_spline(varphi), self.normal_z_cart_spline(varphi)])
+                    X_proj = np.einsum('ij,ij->j', pos - axis_point, normal)
+                    binormal = np.array([self.binormal_x_cart_spline(varphi), self.binormal_y_cart_spline(varphi), self.binormal_z_cart_spline(varphi)])
+                    Y_proj = np.einsum('ij,ij->j', pos - axis_point, binormal)
+                                                            
+                    # X_fs_2D[j_theta, :] = X_spline(varphi)
+                    
+                    # Y_fs_2D[j_theta, :] = Y_spline(varphi)
+
+                    X_fs_2D[j_theta, :] = X_proj
+                    
+                    Y_fs_2D[j_theta, :] = Y_proj
+
+                pbar.update(1)
+    else:
+        # Defining the attributes
+        order = self.order
+        flag_half = self.flag_half
+
+        # Real space geometry
+        normal_x_cart_spline = self.normal_x_cart_spline
+        normal_y_cart_spline = self.normal_y_cart_spline
+        normal_z_cart_spline = self.normal_z_cart_spline
+
+        binormal_x_cart_spline = self.binormal_x_cart_spline
+        binormal_y_cart_spline = self.binormal_y_cart_spline
+        binormal_z_cart_spline = self.binormal_z_cart_spline
+
+        tangent_x_cart_spline = self.tangent_x_cart_spline
+        tangent_y_cart_spline = self.tangent_y_cart_spline
+        tangent_z_cart_spline = self.tangent_z_cart_spline
+
+        x0_cart_spline = self.x0_cart_spline
+        y0_cart_spline = self.y0_cart_spline
+        z0_cart_spline = self.z0_cart_spline
+
+        # Frenet-Serret space
+        X1c_untwisted = self.X1c_untwisted
+        X1s_untwisted = self.X1s_untwisted
+        Y1c_untwisted = self.Y1c_untwisted
+        Y1s_untwisted = self.Y1s_untwisted
+        if order != 'r1':
+            # We need O(r^2) terms:
+            X20_untwisted = self.X20_untwisted
+            X2c_untwisted = self.X2c_untwisted
+            X2s_untwisted = self.X2s_untwisted
+            Y20_untwisted = self.Y20_untwisted
+            Y2c_untwisted = self.Y2c_untwisted
+            Y2s_untwisted = self.Y2s_untwisted
+            Z20_untwisted = self.Z20_untwisted
+            Z2c_untwisted = self.Z2c_untwisted
+            Z2s_untwisted = self.Z2s_untwisted
+            if self.order == 'r3':
+                # We need O(r^3) terms:
+                X3c1_untwisted = self.X3c1_untwisted
+                X3s1_untwisted = self.X3s1_untwisted
+                X3c3_untwisted = self.X3c3_untwisted
+                X3s3_untwisted = self.X3s3_untwisted
+                Y3c1_untwisted = self.Y3c1_untwisted
+                Y3s1_untwisted = self.Y3s1_untwisted
+                Y3c3_untwisted = self.Y3c3_untwisted
+                Y3s3_untwisted = self.Y3s3_untwisted
+                Z3c1_untwisted = self.Z3c1_untwisted
+                Z3s1_untwisted = self.Z3s1_untwisted
+                Z3c3_untwisted = self.Z3c3_untwisted
+                Z3s3_untwisted = self.Z3s3_untwisted
+
+
+        # Define the splining function
+        convert_to_spline = self.convert_to_spline
+
+        def residual_calculation(phi0, varphi, x0_cart_spline, y0_cart_spline, z0_cart_spline,
+                                    normal_x_cart_spline, normal_y_cart_spline, normal_z_cart_spline,
+                                    binormal_x_cart_spline, binormal_y_cart_spline, binormal_z_cart_spline,
+                                    tangent_x_cart_spline, tangent_y_cart_spline, tangent_z_cart_spline,
+                                X_spline, Y_spline, Z_spline):
+            """
+            Residual function with explicit arguments instead of self/qic.
+            """
+            axis_point = np.array([x0_cart_spline(varphi), y0_cart_spline(varphi), z0_cart_spline(varphi)])
+
+            X_cart = x0_cart_spline(phi0) + X_spline(phi0) * normal_x_cart_spline(phi0) + \
+                                                    Y_spline(phi0) * binormal_x_cart_spline(phi0) + \
+                                                    Z_spline(phi0) * tangent_x_cart_spline(phi0)
+                            
+            Y_cart = y0_cart_spline(phi0) + X_spline(phi0) * normal_y_cart_spline(phi0) + \
+                                                        Y_spline(phi0) * binormal_y_cart_spline(phi0) + \
+                                                        Z_spline(phi0) * tangent_y_cart_spline(phi0)
+            
+            Z_cart = z0_cart_spline(phi0) + X_spline(phi0) * normal_z_cart_spline(phi0) + \
+                                                        Y_spline(phi0) * binormal_z_cart_spline(phi0) + \
+                                                        Z_spline(phi0) * tangent_z_cart_spline(phi0)
+            
+            axis_point = np.array([x0_cart_spline(varphi), y0_cart_spline(varphi), z0_cart_spline(varphi)])
+
+            fdot = np.einsum('ij,ij->j', np.array([X_cart, Y_cart, Z_cart]) - axis_point, \
+                np.array([tangent_x_cart_spline(varphi), tangent_y_cart_spline(varphi), tangent_z_cart_spline(varphi)]))
+
+            return fdot
+        
+        def evaluate_func_par(root, varphi, x0_cart_spline, y0_cart_spline, z0_cart_spline,
+                                    normal_x_cart_spline, normal_y_cart_spline, normal_z_cart_spline,
+                                    binormal_x_cart_spline, binormal_y_cart_spline, binormal_z_cart_spline,
+                                    tangent_x_cart_spline, tangent_y_cart_spline, tangent_z_cart_spline,
+                                    X_spline, Y_spline, Z_spline):
+            """
+            Residual function with explicit arguments instead of self/qic.
+            """
+            axis_point = np.array([x0_cart_spline(varphi), y0_cart_spline(varphi), z0_cart_spline(varphi)])
+
+            # Project to X,Y locally
+            X_pos = x0_cart_spline(root) + X_spline(root) * normal_x_cart_spline(root) + \
+                                                        Y_spline(root) * binormal_x_cart_spline(root) + \
+                                                        Z_spline(root) * tangent_x_cart_spline(root)            
+            Y_pos = y0_cart_spline(root) + X_spline(root) * normal_y_cart_spline(root) + \
+                                                        Y_spline(root) * binormal_y_cart_spline(root) + \
+                                                        Z_spline(root) * tangent_y_cart_spline(root)            
+            Z_pos = z0_cart_spline(root) + X_spline(root) * normal_z_cart_spline(root) + \
+                                                        Y_spline(root) * binormal_z_cart_spline(root) + \
+                                                        Z_spline(root) * tangent_z_cart_spline(root)
+
+            pos = np.array([X_pos, Y_pos, Z_pos])
+            normal = np.array([normal_x_cart_spline(varphi), normal_y_cart_spline(varphi), normal_z_cart_spline(varphi)])
+            X_proj = np.einsum('ij,ij->j', pos - axis_point, normal)
+            binormal = np.array([binormal_x_cart_spline(varphi), binormal_y_cart_spline(varphi), binormal_z_cart_spline(varphi)])
+            Y_proj = np.einsum('ij,ij->j', pos - axis_point, binormal)
+
+            return X_proj, Y_proj
+
+        def worker(j_theta):
+            costheta = np.cos(theta[j_theta])
+            sintheta = np.sin(theta[j_theta])
+            X_at_this_theta = r * (X1c_untwisted * costheta + X1s_untwisted * sintheta)
+            Y_at_this_theta = r * (Y1c_untwisted * costheta + Y1s_untwisted * sintheta)
+            Z_at_this_theta = 0 * X_at_this_theta
+            if order != 'r1':
+                # We need O(r^2) terms:
+                cos2theta = np.cos(2 * theta[j_theta])
+                sin2theta = np.sin(2 * theta[j_theta])
+                X_at_this_theta += r * r * (X20_untwisted + X2c_untwisted * cos2theta + X2s_untwisted * sin2theta)
+                Y_at_this_theta += r * r * (Y20_untwisted + Y2c_untwisted * cos2theta + Y2s_untwisted * sin2theta)
+                Z_at_this_theta += r * r * (Z20_untwisted + Z2c_untwisted * cos2theta + Z2s_untwisted * sin2theta)
+                if order == 'r3':
+                    # We need O(r^3) terms:
+                    costheta  = np.cos(theta[j_theta])
+                    sintheta  = np.sin(theta[j_theta])
+                    cos3theta = np.cos(3 * theta[j_theta])
+                    sin3theta = np.sin(3 * theta[j_theta])
+                    r3 = r * r * r
+                    X_at_this_theta += r3 * (X3c1_untwisted * costheta + X3s1_untwisted * sintheta
+                                            + X3c3_untwisted * cos3theta + X3s3_untwisted * sin3theta)
+                    Y_at_this_theta += r3 * (Y3c1_untwisted * costheta + Y3s1_untwisted * sintheta
+                                            + Y3c3_untwisted * cos3theta + Y3s3_untwisted * sin3theta)
+                    Z_at_this_theta += r3 * (Z3c1_untwisted * costheta + Z3s1_untwisted * sintheta
+                                            + Z3c3_untwisted * cos3theta + Z3s3_untwisted * sin3theta)
+                        
+            # If half helicity axes are considered, we need to use the extended domain : 
+            # within the 2*pi domain of the axis everything is smooth (as is the signed frame)
+            # but not across phi = 0
+            X_spline = convert_to_spline(X_at_this_theta, half_period = flag_half, varphi = True)
+            Y_spline = convert_to_spline(Y_at_this_theta, half_period = flag_half, varphi = True)
+            Z_spline = convert_to_spline(Z_at_this_theta, varphi = True)
+
+            X_2D_j = x0_cart_spline(varphi) + X_spline(varphi) * normal_x_cart_spline(varphi) + \
+                                                        Y_spline(varphi) * binormal_x_cart_spline(varphi) + \
+                                                        Z_spline(varphi) * tangent_x_cart_spline(varphi)            
+            Y_2D_j = y0_cart_spline(varphi) + X_spline(varphi) * normal_y_cart_spline(varphi) + \
+                                                        Y_spline(varphi) * binormal_y_cart_spline(varphi) + \
+                                                        Z_spline(varphi) * tangent_y_cart_spline(varphi)            
+            Z_2D_j = z0_cart_spline(varphi) + X_spline(varphi) * normal_z_cart_spline(varphi) + \
+                                                        Y_spline(varphi) * binormal_z_cart_spline(varphi) + \
+                                                        Z_spline(varphi) * tangent_z_cart_spline(varphi)
+
+            # Find the cross-section normal to the axis
+            root = fsolve(residual_calculation, varphi, args = (varphi, x0_cart_spline, y0_cart_spline, z0_cart_spline,
+                                      normal_x_cart_spline, normal_y_cart_spline, normal_z_cart_spline,
+                                      binormal_x_cart_spline, binormal_y_cart_spline, binormal_z_cart_spline,
+                                      tangent_x_cart_spline, tangent_y_cart_spline, tangent_z_cart_spline,
+                                    X_spline, Y_spline, Z_spline))
+
+            # Project to X,Y locally
+            X_proj, Y_proj = evaluate_func_par(root, varphi, x0_cart_spline, y0_cart_spline, z0_cart_spline,
+                                      normal_x_cart_spline, normal_y_cart_spline, normal_z_cart_spline,
+                                      binormal_x_cart_spline, binormal_y_cart_spline, binormal_z_cart_spline,
+                                      tangent_x_cart_spline, tangent_y_cart_spline, tangent_z_cart_spline,
+                                    X_spline, Y_spline, Z_spline)
+                                                        
+            return j_theta, X_2D_j, Y_2D_j, Z_2D_j, X_proj, Y_proj
+        
+        # Use ThreadPoolExecutor for parallel processing
+        with Manager() as manager:
+            progress_queue = manager.Queue()
+
+            # Define a processing pool
+            n_process = os.cpu_count()
+            with Pool(processes = n_process) as pool:
+                # Create a tqdm progress bar
+                with tqdm(total=ntheta, desc="Processing theta", ncols=100) as pbar:
+                    # Start processing the tasks
+                    results = []
+                    for result in pool.imap(worker, range(ntheta)):
+                        # Each time a task completes, update the progress bar
+                        results.append(result)  # Collect the result
+                        pbar.update(1)
+
+        for j_theta, X_2D_j, Y_2D_j, Z_2D_j, X_proj, Y_proj in results:
+            X_2D[j_theta, :], Y_2D[j_theta, :], Z_2D[j_theta, :], X_fs_2D[j_theta, :], Y_fs_2D[j_theta, :] = X_2D_j, Y_2D_j, Z_2D_j, X_proj, Y_proj
+
+    return X_2D, Y_2D, Z_2D, X_fs_2D, Y_fs_2D
+    
+def plot_boundary_cartesians(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections=8, mpol=13, ntor=25,
+         fieldlines=False, savefig=None, colormap=None, azim_default=None, plot_3d=True, n_field_lines=1,
+         show=True, axis = None, legend = True, legend_text = None, parallel = True, **kwargs):
+    """
+    Plot the boundary of the near-axis configuration. There are two main ways of
+    running this function.
+
+    If ``fieldlines=False`` (default), 2 matplotlib figures are generated:
+
+        - A 2D plot with several poloidal planes at the specified radius r with the
+          corresponding location of the magnetic axis.
+
+        - A 3D plot with the flux surface and the magnetic field strength
+          on the surface.
+
+    If ``fieldlines=True``, both matplotlib and mayavi are required, and
+    the following 2 figures are generated:
+
+        - A 2D matplotlib plot with several poloidal planes at the specified radius r with the
+          corresponding location of the magnetic axis.
+
+        - A 3D mayavi figure with the flux surface the magnetic field strength
+          on the surface and several magnetic field lines.
+
+    Args:
+      r (float): near-axis radius r where to create the surface
+      ntheta (int): Number of grid points to plot in the poloidal angle.
+      nphi   (int): Number of grid points to plot in the toroidal angle.
+      ntheta_fourier (int): Resolution in the Fourier transform to cylindrical coordinates
+      nsections (int): Number of poloidal planes to show.
+      fieldlines (bool): Specify if fieldlines are shown. Using mayavi instead of matplotlib due to known bug https://matplotlib.org/2.2.2/mpl_toolkits/mplot3d/faq.html
+      savefig (str): Filename prefix for the png files to save.
+        Note that a suffix including ``.png`` will be appended.
+        If ``None``, no figure files will be saved.
+      colormap (cmap): Custom colormap for the 3D plots
+      azim_default: Default azimuthal angle for the three subplots in the 3D surface plot
+      show: Whether or not to call the matplotlib/mayavi ``show()`` command.
+      kwargs: Any additional key-value pairs to pass to matplotlib's plot_surface.
+
+    This function generates plots similar to the ones below:
+
+    .. image:: 3dplot1.png
+       :width: 200
+
+    .. image:: 3dplot2.png
+       :width: 200
+
+    .. image:: poloidalplot.png
+       :width: 200
+    """
+    # assert self.nfp ==1,'Should be used only for N=1'
+
+    x_2D_plot, y_2D_plot, z_2D_plot, X_fs_2D, Y_fs_2D = self.get_boundary_cartesians(r=r, ntheta=ntheta, nphi=nphi, ntheta_fourier=ntheta_fourier, \
                                                                     mpol = mpol, ntor = ntor, parallel = parallel)
+    
     phi = np.linspace(0, 2 * np.pi, nphi)  # Endpoint = true and no nfp factor, because this is what is used in get_boundary()
-    R_2D_spline = interp1d(phi, R_2D_plot, axis=1)
-    z_2D_spline = interp1d(phi, z_2D_plot, axis=1)
+    X_fs_2D_spline = interp1d(phi, X_fs_2D, axis=1)
+    Y_fs_2D_spline = interp1d(phi, Y_fs_2D, axis=1)
+
     ## Poloidal plot
     phi1dplot_RZ = np.linspace(0, 2 * np.pi / self.nfp, nsections, endpoint=False)
     if axis == None:
@@ -461,21 +995,13 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
         if not flag_color:
             color = next(ax._get_lines.prop_cycler)['color']
 
-        # Plot location of the axis
-        if not legend_text is None:
-            if i == 0:
-                plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, label=legend_text, color=color)
-            else:
-                plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, color=color)
-        else:
-            plt.plot(self.R0_func(phi), self.Z0_func(phi), marker="x", linewidth=2, label=label, color=color)
         if plot_3d == True:
             # Plot poloidal cross-section
-            plt.plot(R_2D_spline(phi), z_2D_spline(phi), color=color)
+            plt.plot(X_fs_2D_spline(phi), Y_fs_2D_spline(phi), color=color)
         else:
-            plt.plot(R_2D_spline(phi), z_2D_spline(phi), color=color, **kwargs)
-    plt.xlabel('R [m]', fontsize=14)
-    plt.ylabel('Z [m]', fontsize=14)
+            plt.plot(X_fs_2D_spline(phi), Y_fs_2D_spline(phi), color=color, **kwargs)
+    plt.xlabel('X [m]', fontsize=14)
+    plt.ylabel('Y [m]', fontsize=14)
     ax.tick_params(axis='both', which='major', labelsize=12)
     ax.tick_params(axis='both', which='minor', labelsize=12)
     if legend:
@@ -504,13 +1030,13 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
             phi1D = np.linspace(0, 2 * np.pi, nphi)
             phi2D, theta2D = np.meshgrid(phi1D, theta1D)
             # Create a color map similar to viridis 
-            Bmag = self.B_mag(r, theta2D, phi2D)
+            Bmag = self.B_mag(r, theta2D, phi2D, Boozer_toroidal = True)
             norm = clr.Normalize(vmin=Bmag.min(), vmax=Bmag.max())
             if fieldlines==False:
                 if colormap==None:
                     # Cmap similar to quasisymmetry papers
                     # cmap = clr.LinearSegmentedColormap.from_list('qs_papers',['#4423bb','#4940f4','#2e6dff','#0097f2','#00bacc','#00cb93','#00cb93','#7ccd30','#fbdc00','#f9fc00'], N=256)
-                    cmap = cm.RdBu
+                    cmap = cm.RdBu_r
                     # Add a light source so the surface looks brighter
                     ls = LightSource(azdeg=0, altdeg=10)
                     cmap_plot = ls.shade(Bmag, cmap, norm=norm)

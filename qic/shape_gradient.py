@@ -478,7 +478,9 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
             integ = G_X2c * integ[:nphi] + G_X2s * integ[nphi:]
             den_alt = stel.nfp*np.trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
             assert np.abs(den_alt - den).max() < 1e-10, Warning("denominator lagrange multiuplier error")
-        eps_ideal = num/den if mag_well > 0 else 0
+
+        # Unsure what is the best thing to do here
+        eps_ideal = num/den # if mag_well > 0 else 0
 
         ## Required shaping ##
         shape = np.linalg.solve(M_mat, Lambda - eps_ideal * G_tot)

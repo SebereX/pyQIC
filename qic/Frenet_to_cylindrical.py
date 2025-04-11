@@ -249,8 +249,9 @@ def Frenet_to_cylindrical_parallel(self, r, ntheta=20):
                 args=(
                     phi_target, R0_func, normal_R_spline, normal_phi_spline, binormal_R_spline, binormal_phi_spline,
                     tangent_R_spline, tangent_phi_spline, X_spline, Y_spline, Z_spline, order),
-                bracket=[phi0_rootSolve_min, phi0_rootSolve_max],
-                x0=phi_target
+                # bracket=[phi0_rootSolve_min, phi0_rootSolve_max],
+                x0=phi_target,
+                x1 = phi_target + 0.1
             )
             phi0_solution = res.root
             final_R, final_z, _ = final_R, final_z, final_phi = Frenet_to_cylindrical_1_point_par(
@@ -446,9 +447,22 @@ def Frenet_to_cylindrical_no_parallel(self, r, ntheta=20):
             # print('*')
             # import matplotlib.pyplot as plt
             # phi_ext = np.linspace(-1,1,10000)*np.pi
+            # plt.figure()
+            # plt.subplot(1,3,1)
             # plt.plot(phi_ext, Z_spline(phi_ext)*self.tangent_R_spline(phi_ext))
             # plt.plot(phi_ext, Z_spline(phi_ext)*self.tangent_phi_spline(phi_ext))
             # plt.plot(phi_ext, Z_spline(phi_ext)*self.tangent_z_spline(phi_ext))
+            # plt.title('Tangent')
+            # plt.subplot(1,3,2)
+            # plt.plot(phi_ext, X_spline(phi_ext)*self.normal_R_spline(phi_ext))
+            # plt.plot(phi_ext, X_spline(phi_ext)*self.normal_phi_spline(phi_ext))
+            # plt.plot(phi_ext, X_spline(phi_ext)*self.normal_z_spline(phi_ext))
+            # plt.title('Normal')
+            # plt.subplot(1,3,3)
+            # plt.plot(phi_ext, Y_spline(phi_ext)*self.binormal_R_spline(phi_ext))
+            # plt.plot(phi_ext, Y_spline(phi_ext)*self.binormal_phi_spline(phi_ext))
+            # plt.plot(phi_ext, Y_spline(phi_ext)*self.binormal_z_spline(phi_ext))
+            # plt.title('Binormal')
             # plt.show()
             for j_phi in range(nphi_conversion):
                 # Solve for the phi0 such that r0 + X n + Y b has the desired phi
