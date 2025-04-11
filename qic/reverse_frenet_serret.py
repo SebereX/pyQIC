@@ -381,26 +381,6 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
 
     flag_half = self.flag_half
 
-    def save_splines_FS_cart(varphi, ell_grid, kappa = kappa, tau = tau):
-        # Keep the geometric quantities in cylindrical phi
-        self.x0_cart_spline = self.convert_to_spline(aligned_position[:,0], grid = varphi)
-        self.y0_cart_spline = self.convert_to_spline(aligned_position[:,1], grid = varphi)
-        self.z0_cart_spline = self.convert_to_spline(aligned_position[:,2], grid = varphi)
-            
-        # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
-        # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in cylindrical phi.
-        self.normal_x_cart_spline = self.convert_to_spline(aligned_N[:,0], grid = varphi, half_period = flag_half)
-        self.normal_y_cart_spline = self.convert_to_spline(aligned_N[:,1], grid = varphi, half_period = flag_half)
-        self.normal_z_cart_spline = self.convert_to_spline(aligned_N[:,2], grid = varphi, half_period = flag_half)
-        self.binormal_x_cart_spline = self.convert_to_spline(aligned_B[:,0], grid = varphi, half_period = flag_half)
-        self.binormal_y_cart_spline = self.convert_to_spline(aligned_B[:,1], grid = varphi, half_period = flag_half)
-        self.binormal_z_cart_spline = self.convert_to_spline(aligned_B[:,2], grid = varphi, half_period = flag_half)
-        self.tangent_x_cart_spline = self.convert_to_spline(aligned_T[:,0], grid = varphi)
-        self.tangent_y_cart_spline = self.convert_to_spline(aligned_T[:,1], grid = varphi)
-        self.tangent_z_cart_spline = self.convert_to_spline(aligned_T[:,2], grid = varphi)
-
-    save_splines_FS_cart(varphi, ell)
-
     ######################################
     # CONVERT TO CYLINDRICAL COORDINATES #
     ######################################
@@ -479,6 +459,26 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     mismatch = [T[-1]-T[0], N[-1]-(-1)**self.nfp*N[0],[R_ss[ind_ss_point]-R_ss[0], Z_ss[ind_ss_point]-Z_ss[0]], position[-1] - position[0]]
     if minimal:
         return mismatch
+    
+    def save_splines_FS_cart(varphi, ell_grid, kappa = kappa, tau = tau):
+        # Keep the geometric quantities in cylindrical phi
+        self.x0_cart_spline = self.convert_to_spline(aligned_position[:,0], grid = varphi)
+        self.y0_cart_spline = self.convert_to_spline(aligned_position[:,1], grid = varphi)
+        self.z0_cart_spline = self.convert_to_spline(aligned_position[:,2], grid = varphi)
+            
+        # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
+        # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in cylindrical phi.
+        self.normal_x_cart_spline = self.convert_to_spline(aligned_N[:,0], grid = varphi, half_period = flag_half)
+        self.normal_y_cart_spline = self.convert_to_spline(aligned_N[:,1], grid = varphi, half_period = flag_half)
+        self.normal_z_cart_spline = self.convert_to_spline(aligned_N[:,2], grid = varphi, half_period = flag_half)
+        self.binormal_x_cart_spline = self.convert_to_spline(aligned_B[:,0], grid = varphi, half_period = flag_half)
+        self.binormal_y_cart_spline = self.convert_to_spline(aligned_B[:,1], grid = varphi, half_period = flag_half)
+        self.binormal_z_cart_spline = self.convert_to_spline(aligned_B[:,2], grid = varphi, half_period = flag_half)
+        self.tangent_x_cart_spline = self.convert_to_spline(aligned_T[:,0], grid = varphi)
+        self.tangent_y_cart_spline = self.convert_to_spline(aligned_T[:,1], grid = varphi)
+        self.tangent_z_cart_spline = self.convert_to_spline(aligned_T[:,2], grid = varphi)
+
+    save_splines_FS_cart(varphi, ell)
 
     # Check whether the sense of the axis is in the positive cylindrical angle
     phi = np.unwrap(phi)
