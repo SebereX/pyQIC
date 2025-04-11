@@ -259,7 +259,6 @@ def plot_precession_different_alpha(stel, r, num_plots = 15, multiple = True, sc
     return k2, wa_array, wpsi_array
 
 def maxj_at_bottom(self): 
-
     def eval_at_bottom(y):
         # Interpolate to the bottom of the well (to take into account the shift of the phi grid)
         pos = [np.pi]
@@ -338,3 +337,4 @@ def maxj_at_bottom(self):
         f0_b_real = np.nan
 
     return [P_dd_norm, P_ddB0_norm, P_t2_norm, P_I2_norm, qi_term, beta0_crit, f0_b, f0_b_real]
+

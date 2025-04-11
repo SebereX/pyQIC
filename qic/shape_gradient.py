@@ -382,7 +382,7 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
         simple: (bool) simple reshaping using the X2c and X2s L2 minimisation; if not simple, use the more sophisticated variational formulation
         check: (bool) check the implementation
         run: (bool) run the self-consistent second order solve using the reshaping.
-        well: (float) impose a minimum size of the magnetic well. Default is 0.
+        well: (float, array) impose a minimum size of the magnetic well. Default is 0. If an array is passed, run for the different values of well. Cannot run stel for all.
     Returns:
         mod_X2c: (array) the modified X2c (if run is False)
         mod_X2s: (array) the modified X2s (if run is False)
@@ -451,9 +451,8 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
         G_tot = np.concatenate((G_X2c, G_X2s))
 
         ## Minimal magnetic well ## (option to impose some size of the well)
-        mag_well = stel.d2_volume_d_psi2 + well
         integ = G_X2c * stel.X2c + G_X2s * stel.X2s
-        mag_well_min = mag_well - stel.nfp*np.trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
+        mag_well_min = stel.d2_volume_d_psi2 - stel.nfp*np.trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
 
         ## Lagrange multiplier ##
         vec_temp = np.linalg.solve(M_mat, Lambda)
@@ -466,7 +465,7 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
             integ_alt = np.matmul(M_inv.transpose(), G_tot)
             integ_alt = Lambda[:nphi] * integ_alt[:nphi] + Lambda[nphi:] * integ_alt[nphi:]
             num_alt = mag_well_min + stel.nfp*np.trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
-            assert np.abs(num_alt - num).max() < 1e-10, Warning("numerator lagrange multiuplier error")
+            assert np.abs(num_alt - num).max() < 1e-10, Warning("numerator lagrange multiplier error")
 
         ## Check M inv ##
         vec_temp = np.linalg.solve(M_mat, G_tot)
@@ -478,31 +477,57 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
             integ = G_X2c * integ[:nphi] + G_X2s * integ[nphi:]
             den_alt = stel.nfp*np.trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
             assert np.abs(den_alt - den).max() < 1e-10, Warning("denominator lagrange multiuplier error")
-        eps_ideal = num/den if mag_well > 0 else 0
 
-        ## Required shaping ##
-        shape = np.linalg.solve(M_mat, Lambda - eps_ideal * G_tot)
-        mod_X2c = shape[:nphi]
-        mod_X2s = shape[nphi:]
+        # Check if well is a single scalar or list
+        if isinstance(well, list) or isinstance(well, np.ndarray):
+            ## Required shaping ##
+            sh_Lambda = np.linalg.solve(M_mat, Lambda)
+            sh_G_tot = np.linalg.solve(M_mat, G_tot)
+            # Initialise list for mod shaping
+            mod_X2c = np.zeros((len(well), nphi))
+            mod_X2s = np.zeros((len(well), nphi))
+            for j_well, well_val in enumerate(well):
+                eps_ideal = (num + well_val)/den if (stel.d2_volume_d_psi2 + well_val) > 0 else 0
+                ## Required shaping ##
+                shape = sh_Lambda - eps_ideal * sh_G_tot
+                mod_X2c[j_well, :] = shape[:nphi]
+                mod_X2s[j_well, :] = shape[nphi:]
 
-        if check:
-            # Check integrand
-            integ = G_X2c * mod_X2c + G_X2s * mod_X2s
-            V_pp_est = stel.nfp*np.trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
-            assert np.abs(mag_well_min + V_pp_est).max() < 1e-10, Warning("V'' problems")
+                if check:
+                    # Check integrand
+                    integ = G_X2c * mod_X2c[j_well, :] + G_X2s * mod_X2s[j_well, :]
+                    V_pp_est = stel.nfp*np.trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
+                    assert np.abs(mag_well_min + well_val + V_pp_est).max() < 1e-10, Warning("V'' problems")
 
-    if run:
-        # Prepare 2nd order reshaping inputs
-        X2c_in = {"type": 'grid', "input_value": mod_X2c}
-        X2s_in = {"type": 'grid', "input_value": mod_X2s}
-        # Solve re-shaped configuration
-        stel.X2c_in = X2c_in
-        stel.X2s_in = X2s_in
-        stel.calculate_r2()
+        else:
+            eps_ideal = (num + well)/den if (stel.d2_volume_d_psi2 + well) > 0 else 0
 
-        return stel
-    else:
-        return mod_X2c, mod_X2s
+            ## Required shaping ##
+            shape = np.linalg.solve(M_mat, Lambda - eps_ideal * G_tot)
+            mod_X2c = shape[:nphi]
+            mod_X2s = shape[nphi:]
+
+            if check:
+                # Check integrand
+                integ = G_X2c * mod_X2c + G_X2s * mod_X2s
+                V_pp_est = stel.nfp*np.trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
+                assert np.abs(mag_well_min + well + V_pp_est).max() < 1e-10, Warning("V'' problems")
+
+        if run:
+            if isinstance(well, list) or isinstance(well, np.ndarray):
+                raise KeyError("Cannot run pyQIC for all well values")
+
+            # Prepare 2nd order reshaping inputs
+            X2c_in = {"type": 'grid', "input_value": mod_X2c}
+            X2s_in = {"type": 'grid', "input_value": mod_X2s}
+            # Solve re-shaped configuration
+            stel.X2c_in = X2c_in
+            stel.X2s_in = X2s_in
+            stel.calculate_r2()
+
+            return stel
+        else:
+            return mod_X2c, mod_X2s
 
 def compute_sensitivity_Shafranov_shift(stel, L_matrix = None, check_lin = False):
     """

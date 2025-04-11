@@ -47,6 +47,7 @@ def _residual(self, x):
             alpha_cent = np.interp(0, varphi_cent, self.alpha)
             if not np.abs(alpha_cent - np.pi/2) < 1e-6: print("WARNING! Problems with the centre of alpha!")
             self.alpha_buf = self.alpha - iota * varphi_cent - alpha_cent
+            self.alpha_cent = alpha_cent
 
             # We will need to compute gamma = iota - d_alpha_d_varphi
             # To compute d_alpha_d_varphi, we need to separate the non-symmetric piece: we assume this is the helicity part

@@ -1055,6 +1055,8 @@ class Qic():
             add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, nfp=nfp, B0 = B0, d = d, d_over_curvature = d_over_curvature, nphi = nphi, \
                              omn_buffer = buffer_opt, sigma0 = sigma0, p2 = p2, X2c = X2c, X2s = X2s, omn = True, order = 'r3')
        
+
+       
         else:
             raise ValueError('Unrecognized configuration name')
 
