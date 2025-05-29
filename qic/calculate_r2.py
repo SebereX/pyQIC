@@ -418,15 +418,15 @@ def calculate_r2(self, no_rc = False, no_interp = False):
         self.Z2s_untwisted = self.Z2s *   cosangle  + self.Z2c * sinangle
         self.Z2c_untwisted = self.Z2s * (-sinangle) + self.Z2c * cosangle
 
-    # Construct some useful splines
-    self.B20_spline = self.convert_to_spline(self.B20, varphi = False)
-    self.B2c_spline = self.convert_to_spline(self.B2c, varphi = False)
-    self.B2s_spline = self.convert_to_spline(self.B2s, varphi = False)
-
     ######################################
     # REPRESENTATION IN QI ANGULAR BASIS #
     ######################################
     if self.omn:
+        # Construct some useful splines
+        self.B20_spline = self.convert_to_spline(self.B20, varphi = False)
+        self.B2c_spline = self.convert_to_spline(self.B2c, varphi = False)
+        self.B2s_spline = self.convert_to_spline(self.B2s, varphi = False)
+
         # In QI, the 2nd order field may be written as
         # B2 = B20 + B2cQI cos[2*(θ-ιφ+ν)] + B2sQI sin[2*(θ-ιφ+ν)] where ν = ιφ-α and α is self.alpha
         #    = B20 + B2c   cos[2*(θ-Nφ)]   + B2s   sin[2*(θ-Nφ)]
@@ -547,7 +547,6 @@ def construct_qi_r2(self, order = 1, verbose = 0, params = [], method = "BFGS", 
         #           d_over_curvature_spline=self.d_over_curvature_spline, B2c_svals=X2c, B2s_cvals=X2s)
 
     return self.B2cQI_deviation_max
-
 
 def evaluate_X2c_X2s_QI(self, X2s_in = 0):
     """

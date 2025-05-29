@@ -2,8 +2,9 @@
 This module contains the top-level routines for the quasisymmetric
 stellarator construction.
 """
-
+import os
 import logging
+import contextlib
 import numpy as np
 from scipy.io import netcdf
 import matplotlib.pyplot as plt
@@ -46,7 +47,7 @@ class Qic():
     def __init__(self, 
                  omn = True, order = "r1",
                  nphi = 31, phi_shift = 1/3.0, nfp=1, diff_finite = False,
-                 frenet = False, axis_complete = True,
+                 frenet = False, axis_complete = True, flag_only_axis = False,
                  Raxis = {"type": 'fourier', "input_value": {"cos": [1.0, 0.1], "sin": []}},
                  Zaxis = {"type": 'fourier', "input_value": {"cos": [], "sin": [0.0, 0.05]}},
                  curvature = None, torsion = None, ell = None, L = None, varphi = None, helicity = None, solve_geo = True, solve_extras = True, do_splines = True,
@@ -148,6 +149,9 @@ class Qic():
 
             self.Raxis = None
             self.Zaxis = None
+
+        self.flag_only_axis = flag_only_axis
+        self.flag_splines = do_splines # If True, it creates splines of quantities on the grid
 
         self.lasym = True # Temporary fix
 
@@ -317,7 +321,7 @@ class Qic():
         """
         Driver for the main calculations.
         """
-        self.init_axis(omn_complete = self.axis_complete)
+        self.init_axis(omn_complete = self.axis_complete, flag_only_axis=self.flag_only_axis)
         if self.order != 'r0':
             self.solve_sigma_equation()
             self.r1_diagnostics()
@@ -373,7 +377,7 @@ class Qic():
         assert dofs.size == len(self.names)
         return dofs
 
-    def set_dofs(self, x, re_evaluate = 'all'):
+    def set_dofs(self, x, re_evaluate = 'all', quiet = False):
         """
         For interaction with simsopt, set the optimizable degrees of
         freedom from a 1D numpy vector.
@@ -470,7 +474,19 @@ class Qic():
         # self.B1s = self.B0 * self.d * np.sin(self.alpha)
         # self.B1c = self.B0 * self.d * np.cos(self.alpha)
 
-        # Compute the quantities thereof, regardless of the properties changed (this could be unnecesaily cumbersome)
+        # Suppress output if quiet is True
+        if quiet:
+            with open(os.devnull, 'w') as devnull, contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
+                self._run_calculations(re_evaluate)
+        else:
+            self._run_calculations(re_evaluate)
+
+        logger.info('set_dofs called with x={}. Now iota={}, elongation={}'.format(x, self.iota, self.max_elongation))
+
+    def _run_calculations(self, re_evaluate):
+        """
+        Helper to run calculations based on re_evaluate.
+        """
         if re_evaluate == 'all' or re_evaluate == 'r1':
             self.calculate()
         elif re_evaluate == 'r2':
@@ -481,8 +497,6 @@ class Qic():
             self.calculate_r3()
         else:
             raise NameError("The order specified for re_evaluate in set_dofs is not recognised: it must be one of all, r1, r2, or r3")
-
-        logger.info('set_dofs called with x={}. Now iota={}, elongation={}'.format(x, self.iota, self.max_elongation))
 
     def add_input_string(self, input_dict, name_str):
         """

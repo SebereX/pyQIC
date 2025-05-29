@@ -35,7 +35,7 @@ def self_consistent_ell_from_varphi(self):
 
     return B0, ell, abs_G0
 
-def init_axis(self, omn_complete = True):
+def init_axis(self, omn_complete = True, flag_only_axis = False):
     """
     Initialize the curvature, torsion, differentiation matrix, etc.
     """
@@ -76,7 +76,7 @@ def init_axis(self, omn_complete = True):
             
             if not self.no_cylindrical:
                 # Obtain axis description as Fourier components : important for output to VMEC (at least approximately)
-                ntor = 15
+                ntor = 20
                 rc, rs, zc, zs = to_Fourier_axis(self.R0, self.Z0, self.nfp, ntor = ntor, lasym = True, phi_in = self.phi)
                 self.Raxis = {"type": "fourier", "input_value": {}}
                 self.Zaxis = {"type": "fourier", "input_value": {}}
@@ -154,6 +154,7 @@ def init_axis(self, omn_complete = True):
     else: 
         self.no_cylindrical = False
         self.reg_grid = 'phi'
+
         # When R/Z coordinates are provided, then we need to compute the Frenet frame
         ###############################
         # CONSTRUCT R/Z & DERIVATIVES #
@@ -296,6 +297,7 @@ def init_axis(self, omn_complete = True):
         # Total axis length (taking the nfp into account)
         phi_ext = np.append(phi,phi[0]+2*np.pi/nfp)
         axis_length = np.trapz(np.append(d_l_d_phi,d_l_d_phi[0]), phi_ext) * nfp
+
         # Mean major radius
         mean_of_R = np.trapz(np.append(R0 * d_l_d_phi, R0[0] * d_l_d_phi[0]), phi_ext) * nfp / axis_length
         # Mean vertical displacement
@@ -391,6 +393,15 @@ def init_axis(self, omn_complete = True):
             + (d_r_d_phi_cylindrical[:,0] * d2_r_d_phi2_cylindrical[:,1] - d_r_d_phi_cylindrical[:,1] * d2_r_d_phi2_cylindrical[:,0]) ** 2
 
         torsion = torsion_numerator / torsion_denominator
+
+        if flag_only_axis:
+            self.R0 = R0; self.R0p = R0p; self.R0pp = R0pp; self.R0ppp = R0ppp
+            self.Z0 = Z0; self.Z0p = Z0p; self.Z0pp = Z0pp; self.Z0ppp = Z0ppp
+            self.d_l_d_phi = d_l_d_phi; self.d2_l_d_phi2 = d2_l_d_phi2; self.d3_l_d_phi3 = d3_l_d_phi3
+            self.d_r_d_phi_cylindrical = d_r_d_phi_cylindrical; self.d2_r_d_phi2_cylindrical = d2_r_d_phi2_cylindrical; self.d3_r_d_phi3_cylindrical = d3_r_d_phi3_cylindrical
+            self.curvature = curvature; self.torsion = torsion; self.axis_length = axis_length
+            return
+
         
         ###############################################
         # CALCULATE VARPHI and B0 (d for QI as well ) #
@@ -437,7 +448,7 @@ def init_axis(self, omn_complete = True):
             # Picard iteration is used to find varphi and G0
             # Initialise nu = varphi - phi, which must be periodic
             nu = np.zeros((nphi,))
-            num_iter_max = 20   # Max number of iterations
+            num_iter_max = 30   # Max number of iterations
             for j in range(num_iter_max):
                 # Nu from previous iteration for reference
                 last_nu = nu
@@ -461,11 +472,16 @@ def init_axis(self, omn_complete = True):
             # Final value for varphi
             varphi = phi + nu
             self.varphi = varphi
+                    # Spline interpolant for nu = varphi-phi
+            self.nu = nu
 
             # Final value for B0
             B0 = self.evaluate_input_on_grid(self.B0_in, varphi)
             self.B0 = B0
-            self.Bbar = self.spsi * np.mean(self.B0)
+            if self.Bbar_in == None:
+                self.Bbar = self.spsi * np.mean(self.B0)
+            else:
+                self.Bbar = self.Bbar_in
 
             # Final value for G0
             G0 = self.sG * np.trapz(np.append(B0 * d_l_d_phi,B0[0] * d_l_d_phi[0]), \
@@ -526,26 +542,28 @@ def init_axis(self, omn_complete = True):
         # else:
         #     self.lasym = self.lasym_axis or np.abs(self.sigma0)>0 or np.any(np.array(self.B2c_svals) > 0.0) or np.any(np.array(self.B2c_svals) < 0.0)
 
-        # Functions that converts a toroidal angle phi0 on the axis to the axis radial and vertical coordinates
-        self.R0_func = self.convert_to_spline(R0, varphi = False)
-        self.Z0_func = self.convert_to_spline(Z0, varphi = False)
+        if self.flag_splines:
+            # Functions that converts a toroidal angle phi0 on the axis to the axis radial and vertical coordinates
+            self.R0_func = self.convert_to_spline(R0, varphi = False)
+            self.Z0_func = self.convert_to_spline(Z0, varphi = False)
 
-        # Spline interpolants for the cylindrical components of the Frenet-Serret frame:
-        self.normal_R_spline     = self.convert_to_spline(self.normal_cylindrical[:,0], varphi = False, half_period = self.flag_half)
-        self.normal_phi_spline   = self.convert_to_spline(self.normal_cylindrical[:,1], varphi = False, half_period = self.flag_half)
-        self.normal_z_spline     = self.convert_to_spline(self.normal_cylindrical[:,2], varphi = False, half_period = self.flag_half)
-        self.binormal_R_spline   = self.convert_to_spline(self.binormal_cylindrical[:,0], varphi = False, half_period = self.flag_half)
-        self.binormal_phi_spline = self.convert_to_spline(self.binormal_cylindrical[:,1], varphi = False, half_period = self.flag_half)
-        self.binormal_z_spline = self.convert_to_spline(self.binormal_cylindrical[:,2], varphi = False, half_period = self.flag_half)
-        self.tangent_R_spline = self.convert_to_spline(self.tangent_cylindrical[:,0], varphi = False)
-        self.tangent_phi_spline = self.convert_to_spline(self.tangent_cylindrical[:,1], varphi = False)
-        self.tangent_z_spline = self.convert_to_spline(self.tangent_cylindrical[:,2], varphi = False)
+            # Spline interpolants for the cylindrical components of the Frenet-Serret frame:
+            self.normal_R_spline     = self.convert_to_spline(self.normal_cylindrical[:,0], varphi = False, half_period = self.flag_half)
+            self.normal_phi_spline   = self.convert_to_spline(self.normal_cylindrical[:,1], varphi = False, half_period = self.flag_half)
+            self.normal_z_spline     = self.convert_to_spline(self.normal_cylindrical[:,2], varphi = False, half_period = self.flag_half)
+            self.binormal_R_spline   = self.convert_to_spline(self.binormal_cylindrical[:,0], varphi = False, half_period = self.flag_half)
+            self.binormal_phi_spline = self.convert_to_spline(self.binormal_cylindrical[:,1], varphi = False, half_period = self.flag_half)
+            self.binormal_z_spline = self.convert_to_spline(self.binormal_cylindrical[:,2], varphi = False, half_period = self.flag_half)
+            self.tangent_R_spline = self.convert_to_spline(self.tangent_cylindrical[:,0], varphi = False)
+            self.tangent_phi_spline = self.convert_to_spline(self.tangent_cylindrical[:,1], varphi = False)
+            self.tangent_z_spline = self.convert_to_spline(self.tangent_cylindrical[:,2], varphi = False)
 
-        # Spline interpolant for the magnetic field on-axis as a function of phi (not varphi)
-        self.B0_spline = self.convert_to_spline(self.B0, varphi = False)
+            # Spline interpolant for the magnetic field on-axis as a function of phi (not varphi)
+            self.B0_spline = self.convert_to_spline(self.B0, varphi = False)
 
-        # Spline interpolant for nu = varphi-phi
-        nu = self.varphi-self.phi
-        self.nu = nu
-        self.nu_spline = self.convert_to_spline(nu, varphi = False)
-        self.nu_spline_of_varphi = self.convert_to_spline(nu, varphi = True)
+            # Spline interpolants for nu = varphi-phi
+            self.nu_spline = self.convert_to_spline(nu, varphi = False)
+            self.nu_spline_of_varphi = self.convert_to_spline(nu, varphi = True)
+
+
+

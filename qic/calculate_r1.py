@@ -430,13 +430,14 @@ def r1_diagnostics(self):
     # CONSTRUCT B1 #
     ################
     if self.omn:
-        # Make spline for d (in phi)
-        self.d_spline = self.convert_to_spline(self.d, varphi = False, half_period = self.flag_half)
-        # self.alpha_tilde = self.alpha # -self.N_helicity*self.varphi
+        if self.flag_spline:
+            # Make spline for d (in phi)
+            self.d_spline = self.convert_to_spline(self.d, varphi = False, half_period = self.flag_half)
+            # self.alpha_tilde = self.alpha # -self.N_helicity*self.varphi
 
-        # Cos/sin of alpha (defined respect to θ)
-        self.cos_alpha_spline = self.convert_to_spline(np.cos(self.alpha), varphi = False, half_period = self.flag_half)
-        self.sin_alpha_spline = self.convert_to_spline(np.sin(self.alpha), varphi = False, half_period = self.flag_half)
+            # Cos/sin of alpha (defined respect to θ)
+            self.cos_alpha_spline = self.convert_to_spline(np.cos(self.alpha), varphi = False, half_period = self.flag_half)
+            self.sin_alpha_spline = self.convert_to_spline(np.sin(self.alpha), varphi = False, half_period = self.flag_half)
 
         # Define angle as: θ - α = χ - (α - Νφ) = χ - angle <- angle is actually periodic
         angle = self.alpha - (-self.helicity * self.nfp * self.varphi)
@@ -454,8 +455,9 @@ def r1_diagnostics(self):
     else:
         # Cos/sin of alpha (defined respect to θ) - for ideal QS it is Nφ
         self.alpha = (-self.helicity * self.nfp * self.varphi)
-        self.cos_alpha_tilde_spline = self.convert_to_spline(np.cos(self.alpha))
-        self.sin_alpha_tilde_spline = self.convert_to_spline(np.sin(self.alpha))
+        if self.flag_spline:
+            self.cos_alpha_tilde_spline = self.convert_to_spline(np.cos(self.alpha))
+            self.sin_alpha_tilde_spline = self.convert_to_spline(np.sin(self.alpha))
 
         # Define angle as: θ = χ - (α - Νφ) = χ - angle <- angle is actually periodic
         angle = 0
@@ -467,8 +469,9 @@ def r1_diagnostics(self):
         self.B1s = 0.0 * self.B0
 
     # Make splines for B1 : if float, it also works 
-    self.B1c_spline = self.convert_to_spline(self.B1c, varphi = False, half_period = self.flag_half)
-    self.B1s_spline = self.convert_to_spline(self.B1s, varphi = False, half_period = self.flag_half)
+    if self.flag_spline:
+        self.B1c_spline = self.convert_to_spline(self.B1c, varphi = False, half_period = self.flag_half)
+        self.B1s_spline = self.convert_to_spline(self.B1s, varphi = False, half_period = self.flag_half)
 
     ################
     # CONSTRUCT X1 #
