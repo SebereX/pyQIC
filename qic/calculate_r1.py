@@ -430,7 +430,7 @@ def r1_diagnostics(self):
     # CONSTRUCT B1 #
     ################
     if self.omn:
-        if self.flag_spline:
+        if self.flag_splines:
             # Make spline for d (in phi)
             self.d_spline = self.convert_to_spline(self.d, varphi = False, half_period = self.flag_half)
             # self.alpha_tilde = self.alpha # -self.N_helicity*self.varphi
@@ -455,7 +455,7 @@ def r1_diagnostics(self):
     else:
         # Cos/sin of alpha (defined respect to θ) - for ideal QS it is Nφ
         self.alpha = (-self.helicity * self.nfp * self.varphi)
-        if self.flag_spline:
+        if self.flag_splines:
             self.cos_alpha_tilde_spline = self.convert_to_spline(np.cos(self.alpha))
             self.sin_alpha_tilde_spline = self.convert_to_spline(np.sin(self.alpha))
 
@@ -469,7 +469,7 @@ def r1_diagnostics(self):
         self.B1s = 0.0 * self.B0
 
     # Make splines for B1 : if float, it also works 
-    if self.flag_spline:
+    if self.flag_splines:
         self.B1c_spline = self.convert_to_spline(self.B1c, varphi = False, half_period = self.flag_half)
         self.B1s_spline = self.convert_to_spline(self.B1s, varphi = False, half_period = self.flag_half)
 
