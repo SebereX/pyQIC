@@ -95,7 +95,7 @@ def solve_frenet_serret(kappa, tau, ell):
     
     return T, N, B, R
 
-def solve_frenet_serret_fun(kappa, tau, ell):
+def solve_frenet_serret_fun(kappa, tau, ell, rtol = 1e-13, atol = 1e-13):
     # Initial conditions: T0, N0, B0
     R0 = np.array([0, 0, 0])
     T0 = np.array([1, 0, 0])
@@ -114,7 +114,7 @@ def solve_frenet_serret_fun(kappa, tau, ell):
 
     # Solve ODE
     solution = solve_ivp(frenet_serret, [ell[0], ell[-1]], y0, t_eval=ell, args=(kappa_func, tau_func), \
-                         method='DOP853', rtol = 1e-13, atol = 1e-13, dense_output=True)
+                         method='DOP853', rtol = rtol, atol = atol, dense_output=True)
     
     # Separate basis vectors
     R_fun = lambda x: solution.sol(x)[:3].T
@@ -319,7 +319,8 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     ##############################
     # SOLVE FRENET-SERRET SYSTEM #
     ##############################
-    T_fun, N_fun, B_fun, position_fun = solve_frenet_serret_fun(kappa, tau, ell)
+    # Modified precission for faster through db
+    T_fun, N_fun, B_fun, position_fun = solve_frenet_serret_fun(kappa, tau, ell, atol = 1e-5, rtol = 1e-5)
     T = T_fun(ell)
     N = N_fun(ell)
     B = B_fun(ell)
@@ -510,8 +511,8 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
 
     # Redefine the cylindrical angle so that the first point is phi = 0 (the cylindrical representation should not change
     scl = np.abs((phi[-1]-phi[0])/(2*np.pi) - 1)
-    if scl > 1e-6:
-        print('WARNING! The closure of the axis leads to a cylindrical angle far from 2pi')
+    if scl > 1e-5:
+        # print(f'WARNING! The closure of the axis leads to a cylindrical angle far from 2pi {scl}')
         self.no_cylindrical = True
     phi = phi-phi[0]
     phi[-1] = 2*np.pi
