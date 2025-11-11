@@ -320,7 +320,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     # SOLVE FRENET-SERRET SYSTEM #
     ##############################
     # Modified precission for faster through db
-    T_fun, N_fun, B_fun, position_fun = solve_frenet_serret_fun(kappa, tau, ell, atol = 1e-5, rtol = 1e-5)
+    T_fun, N_fun, B_fun, position_fun = solve_frenet_serret_fun(kappa, tau, ell, atol = 1e-10, rtol = 1e-10)
     T = T_fun(ell)
     N = N_fun(ell)
     B = B_fun(ell)
@@ -485,7 +485,8 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     phi = np.unwrap(phi)
     phi0 = phi[0]
     sense_axis = phi[1] - phi0
-    if sense_axis < 0:
+    sense_axis_all = phi[1:] - phi[:-1]
+    if sense_axis < 0 or np.any(sense_axis_all < 0):
         print('WARNING! Wrong sense of the axis!')
         self.no_cylindrical = True
     else:
