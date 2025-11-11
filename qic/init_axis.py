@@ -84,6 +84,12 @@ def init_axis(self, omn_complete = True, flag_only_axis = False):
                 self.Raxis["input_value"]["sin"] = rs
                 self.Zaxis["input_value"]["cos"] = zc
                 self.Zaxis["input_value"]["sin"] = zs
+                
+                R0, R0p, R0pp, R0ppp, Z0, Z0p, Z0pp, Z0ppp = compute_R0_Z0_and_derivatives(self, self.Raxis, self.Zaxis, False)
+                self.R0 = R0; self.R0p = R0p; self.R0pp = R0pp; self.R0ppp = R0ppp
+                self.Z0 = Z0; self.Z0p = Z0p; self.Z0pp = Z0pp; self.Z0ppp = Z0ppp
+
+
 
         # Computing dl/dphi = dl/dvarphi dvarphi/dphi
         # Need to separate secular parts
@@ -171,116 +177,8 @@ def init_axis(self, omn_complete = True, flag_only_axis = False):
         d_phi = self.d_phi
         nfp = self.nfp
 
-        # Function to evaluate R/Z and their derivatives
-        def compute_R0_Z0_and_derivatives(Raxis, Zaxis, omn_complete):
-            # Distinguish the construction depending on how the R/Z functions have been defined
-            if Raxis["type"] == 'fourier':
-                # Define arrays with axis harmonics making them all of the same length
-                nfourier = np.max([len(Raxis["input_value"]["cos"]),
-                                   len(Raxis["input_value"]["sin"]), 
-                                   len(Zaxis["input_value"]["cos"]), 
-                                   len(Zaxis["input_value"]["sin"])])
-                rc = np.zeros(nfourier)
-                zs = np.zeros(nfourier)
-                rs = np.zeros(nfourier)
-                zc = np.zeros(nfourier)
-
-                rc[:len(Raxis["input_value"]["cos"])] = Raxis["input_value"]["cos"]
-                rs[:len(Raxis["input_value"]["sin"])] = Raxis["input_value"]["sin"]
-                zc[:len(Zaxis["input_value"]["cos"])] = Zaxis["input_value"]["cos"]
-                zs[:len(Zaxis["input_value"]["sin"])] = Zaxis["input_value"]["sin"]
-
-                # Check whether axis is symmetric
-                self.lasym_axis = np.max(np.abs(rs))>0 or np.max(np.abs(zc))>0
-
-                # Complete the rc harmonics if possible to force the curvature to be zero at some points
-                if self.omn and omn_complete:
-                    def complete_harmonics(rc, rs, zc, zs):
-                        """
-                        Complete harmonic content to include curvature vanishing points at the centre of the grid.
-                        This is what was implemented. Should be possible to quite easily improve.
-                        """
-                        if not(np.max(np.abs(rs)) == 0.0):
-                            raise KeyError("Unable to complete the axis with non-stellarator symmetric R.")
-                        if len(rc)>6:
-                            rc[6]=-(1 + rc[2] + rc[4] + (rc[2] + 4 * rc[4]) * 4 * nfp * nfp) / (1 + 36 * nfp * nfp)
-                            Raxis["input_value"]["cos"][6] = rc[6]
-                        elif len(rc)>4:
-                            rc[4]=-(1 + rc[2] + 4 * rc[2] * nfp * nfp) / (1 + 16 * nfp * nfp)
-                            Raxis["input_value"]["cos"][4] = rc[4]
-                        else:
-                            rc[2]=-1 / (1 + 4 * nfp * nfp)
-                            Raxis["input_value"]["cos"][2] = rc[2]
-
-                    complete_harmonics(rc, rs, zc, zs)
-
-                # Evaluate on the grid (could use evaluate_input_on_grid, but this saves time evaluating cos/sin)      
-                R0 = np.zeros(nphi)
-                Z0 = np.zeros(nphi)
-                R0p = np.zeros(nphi)
-                Z0p = np.zeros(nphi)
-                R0pp = np.zeros(nphi)
-                Z0pp = np.zeros(nphi)
-                R0ppp = np.zeros(nphi)
-                Z0ppp = np.zeros(nphi)
-                for jn in range(0, nfourier):
-                    n = jn * nfp
-                    sinangle = np.sin(n * phi)
-                    cosangle = np.cos(n * phi)
-                    R0 += rc[jn] * cosangle + rs[jn] * sinangle
-                    Z0 += zc[jn] * cosangle + zs[jn] * sinangle
-                    R0p += rc[jn] * (-n * sinangle) + rs[jn] * (n * cosangle)
-                    Z0p += zc[jn] * (-n * sinangle) + zs[jn] * (n * cosangle)
-                    R0pp += rc[jn] * (-n * n * cosangle) + rs[jn] * (-n * n * sinangle)
-                    Z0pp += zc[jn] * (-n * n * cosangle) + zs[jn] * (-n * n * sinangle)
-                    R0ppp += rc[jn] * (n * n * n * sinangle) + rs[jn] * (-n * n * n * cosangle)
-                    Z0ppp += zc[jn] * (n * n * n * sinangle) + zs[jn] * (-n * n * n * cosangle)
-
-                # self.R0_func = self.convert_to_spline(R0, varphi = False)
-                # self.Z0_func = self.convert_to_spline(Z0, varphi = False)
-
-            elif Raxis["type"] == 'grid':
-                # Read inputs as values on phi grid
-                R0 = Raxis["input_value"]
-                Z0 = Raxis["input_value"]
-                
-                # Check whether axis is symmetric
-                # self.R0_func = self.convert_to_spline(R0, varphi = False)
-                # self.Z0_func = self.convert_to_spline(Z0, varphi = False)
-                self.lasym_axis = np.max(np.max(self.R0_func(phi)-self.R0_func(-phi)))/np.std(R0)>1e-3 or \
-                                  np.max(np.max(self.Z0_func(phi)+self.Z0_func(-phi)))/np.std(Z0)>1e-3
-
-                # Compute derivatives using d_d_phi 
-                R0p = np.matmul(self.d_d_phi, R0)
-                R0pp = np.matmul(self.d_d_phi, R0p)
-                R0ppp = np.matmul(self.d_d_phi, R0pp)
-                Z0p = np.matmul(self.d_d_phi, Z0)
-                Z0pp = np.matmul(self.d_d_phi, Z0p)
-                Z0ppp = np.matmul(self.d_d_phi, Z0pp)
-
-            elif Raxis["type"] == 'spline':
-                # Evaluate the spline on the grid using the evaluate_input_on_grid function
-                R0 = self.evaluate_input_on_grid(Raxis, phi, None)
-                R0p = self.evaluate_input_on_grid(Raxis, phi, 1)
-                R0pp = self.evaluate_input_on_grid(Raxis, phi, 2)
-                R0ppp = self.evaluate_input_on_grid(Raxis, phi, 3)
-                Z0 = self.evaluate_input_on_grid(Zaxis, phi, None)
-                Z0p = self.evaluate_input_on_grid(Zaxis, phi, 1)
-                Z0pp = self.evaluate_input_on_grid(Zaxis, phi, 2)
-                Z0ppp = self.evaluate_input_on_grid(Zaxis, phi, 3)
-
-                # Check if stellarator symmetric
-                self.lasym_axis = np.max(np.max(R0-self.evaluate_input_on_grid(Raxis, -phi)))/np.std(R0)>1e-3 or \
-                                  np.max(np.max(Z0-self.evaluate_input_on_grid(Zaxis, -phi)))/np.std(Z0)>1e-3
-            else:
-                raise ValueError('Please provide the axis as a Fourier array, array or spline dictionary.')
-            
-            # For now keep this in : the tests have been carried out for stellarator symmetry
-            self.lasym = self.lasym_axis
-            
-            return R0, R0p, R0pp, R0ppp, Z0, Z0p, Z0pp, Z0ppp 
         # Compute R/Z and derivatives
-        R0, R0p, R0pp, R0ppp, Z0, Z0p, Z0pp, Z0ppp = compute_R0_Z0_and_derivatives(self.Raxis, self.Zaxis, omn_complete)
+        R0, R0p, R0pp, R0ppp, Z0, Z0p, Z0pp, Z0ppp = compute_R0_Z0_and_derivatives(self, self.Raxis, self.Zaxis, omn_complete)
 
         # Compute d_l_d_phi and derivatives
         d_l_d_phi = np.sqrt(R0 * R0 + R0p * R0p + Z0p * Z0p)
@@ -561,9 +459,122 @@ def init_axis(self, omn_complete = True, flag_only_axis = False):
             # Spline interpolant for the magnetic field on-axis as a function of phi (not varphi)
             self.B0_spline = self.convert_to_spline(self.B0, varphi = False)
 
-            # Spline interpolants for nu = varphi-phi
-            self.nu_spline = self.convert_to_spline(nu, varphi = False)
-            self.nu_spline_of_varphi = self.convert_to_spline(nu, varphi = True)
+        # Spline interpolant for nu = varphi-phi
+        nu = self.varphi-self.phi
+        self.nu = nu
+        self.nu_spline = self.convert_to_spline(nu, varphi = False)
+        self.nu_spline_of_varphi = self.convert_to_spline(nu, varphi = True)
 
+# Function to evaluate R/Z and their derivatives
+def compute_R0_Z0_and_derivatives(self, Raxis, Zaxis, omn_complete):
+    # Define some shorthand
+    phi = self.phi
+    nphi = self.nphi
+    nfp = self.nfp
 
+    # Distinguish the construction depending on how the R/Z functions have been defined
+    if Raxis["type"] == 'fourier':
+        # Define arrays with axis harmonics making them all of the same length
+        nfourier = np.max([len(Raxis["input_value"]["cos"]),
+                            len(Raxis["input_value"]["sin"]), 
+                            len(Zaxis["input_value"]["cos"]), 
+                            len(Zaxis["input_value"]["sin"])])
+        rc = np.zeros(nfourier)
+        zs = np.zeros(nfourier)
+        rs = np.zeros(nfourier)
+        zc = np.zeros(nfourier)
 
+        rc[:len(Raxis["input_value"]["cos"])] = Raxis["input_value"]["cos"]
+        rs[:len(Raxis["input_value"]["sin"])] = Raxis["input_value"]["sin"]
+        zc[:len(Zaxis["input_value"]["cos"])] = Zaxis["input_value"]["cos"]
+        zs[:len(Zaxis["input_value"]["sin"])] = Zaxis["input_value"]["sin"]
+
+        # Check whether axis is symmetric
+        self.lasym_axis = np.max(np.abs(rs))>0 or np.max(np.abs(zc))>0
+
+        # Complete the rc harmonics if possible to force the curvature to be zero at some points
+        if self.omn and omn_complete:
+            def complete_harmonics(rc, rs, zc, zs):
+                """
+                Complete harmonic content to include curvature vanishing points at the centre of the grid.
+                This is what was implemented. Should be possible to quite easily improve.
+                """
+                if not(np.max(np.abs(rs)) == 0.0):
+                    raise KeyError("Unable to complete the axis with non-stellarator symmetric R.")
+                if len(rc)>6:
+                    rc[6]=-(1 + rc[2] + rc[4] + (rc[2] + 4 * rc[4]) * 4 * nfp * nfp) / (1 + 36 * nfp * nfp)
+                    Raxis["input_value"]["cos"][6] = rc[6]
+                elif len(rc)>4:
+                    rc[4]=-(1 + rc[2] + 4 * rc[2] * nfp * nfp) / (1 + 16 * nfp * nfp)
+                    Raxis["input_value"]["cos"][4] = rc[4]
+                else:
+                    rc[2]=-1 / (1 + 4 * nfp * nfp)
+                    Raxis["input_value"]["cos"][2] = rc[2]
+
+            complete_harmonics(rc, rs, zc, zs)
+
+        # Evaluate on the grid (could use evaluate_input_on_grid, but this saves time evaluating cos/sin)      
+        R0 = np.zeros(nphi)
+        Z0 = np.zeros(nphi)
+        R0p = np.zeros(nphi)
+        Z0p = np.zeros(nphi)
+        R0pp = np.zeros(nphi)
+        Z0pp = np.zeros(nphi)
+        R0ppp = np.zeros(nphi)
+        Z0ppp = np.zeros(nphi)
+        for jn in range(0, nfourier):
+            n = jn * nfp
+            sinangle = np.sin(n * phi)
+            cosangle = np.cos(n * phi)
+            R0 += rc[jn] * cosangle + rs[jn] * sinangle
+            Z0 += zc[jn] * cosangle + zs[jn] * sinangle
+            R0p += rc[jn] * (-n * sinangle) + rs[jn] * (n * cosangle)
+            Z0p += zc[jn] * (-n * sinangle) + zs[jn] * (n * cosangle)
+            R0pp += rc[jn] * (-n * n * cosangle) + rs[jn] * (-n * n * sinangle)
+            Z0pp += zc[jn] * (-n * n * cosangle) + zs[jn] * (-n * n * sinangle)
+            R0ppp += rc[jn] * (n * n * n * sinangle) + rs[jn] * (-n * n * n * cosangle)
+            Z0ppp += zc[jn] * (n * n * n * sinangle) + zs[jn] * (-n * n * n * cosangle)
+
+        # self.R0_func = self.convert_to_spline(R0, varphi = False)
+        # self.Z0_func = self.convert_to_spline(Z0, varphi = False)
+
+    elif Raxis["type"] == 'grid':
+        # Read inputs as values on phi grid
+        R0 = Raxis["input_value"]
+        Z0 = Raxis["input_value"]
+        
+        # Check whether axis is symmetric
+        # self.R0_func = self.convert_to_spline(R0, varphi = False)
+        # self.Z0_func = self.convert_to_spline(Z0, varphi = False)
+        self.lasym_axis = np.max(np.max(self.R0_func(phi)-self.R0_func(-phi)))/np.std(R0)>1e-3 or \
+                            np.max(np.max(self.Z0_func(phi)+self.Z0_func(-phi)))/np.std(Z0)>1e-3
+
+        # Compute derivatives using d_d_phi 
+        R0p = np.matmul(self.d_d_phi, R0)
+        R0pp = np.matmul(self.d_d_phi, R0p)
+        R0ppp = np.matmul(self.d_d_phi, R0pp)
+        Z0p = np.matmul(self.d_d_phi, Z0)
+        Z0pp = np.matmul(self.d_d_phi, Z0p)
+        Z0ppp = np.matmul(self.d_d_phi, Z0pp)
+
+    elif Raxis["type"] == 'spline':
+        # Evaluate the spline on the grid using the evaluate_input_on_grid function
+        R0 = self.evaluate_input_on_grid(Raxis, phi, None)
+        R0p = self.evaluate_input_on_grid(Raxis, phi, 1)
+        R0pp = self.evaluate_input_on_grid(Raxis, phi, 2)
+        R0ppp = self.evaluate_input_on_grid(Raxis, phi, 3)
+        Z0 = self.evaluate_input_on_grid(Zaxis, phi, None)
+        Z0p = self.evaluate_input_on_grid(Zaxis, phi, 1)
+        Z0pp = self.evaluate_input_on_grid(Zaxis, phi, 2)
+        Z0ppp = self.evaluate_input_on_grid(Zaxis, phi, 3)
+
+        # Check if stellarator symmetric
+        self.lasym_axis = np.max(np.max(R0-self.evaluate_input_on_grid(Raxis, -phi)))/np.std(R0)>1e-3 or \
+                            np.max(np.max(Z0-self.evaluate_input_on_grid(Zaxis, -phi)))/np.std(Z0)>1e-3
+    else:
+        raise ValueError('Please provide the axis as a Fourier array, array or spline dictionary.')
+    
+    # For now keep this in : the tests have been carried out for stellarator symmetry
+    self.lasym = self.lasym_axis
+    
+    return R0, R0p, R0pp, R0ppp, Z0, Z0p, Z0pp, Z0ppp 
