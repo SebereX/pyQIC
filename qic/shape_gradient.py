@@ -513,6 +513,7 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
                 V_pp_est = stel.nfp*np.trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
                 assert np.abs(mag_well_min + well + V_pp_est).max() < 1e-10, Warning("V'' problems")
 
+        stel.eps_ideal = eps_ideal
         if run:
             if isinstance(well, list) or isinstance(well, np.ndarray):
                 raise KeyError("Cannot run pyQIC for all well values")
