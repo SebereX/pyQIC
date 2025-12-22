@@ -6,3 +6,4 @@ from .reverse_frenet_serret import invert_frenet_axis
 from .util_interp import convert_to_spline
 from .compute_B2_for_r1 import compute_B2_for_r1
 from .qic import Qic
+from .newton import newton
