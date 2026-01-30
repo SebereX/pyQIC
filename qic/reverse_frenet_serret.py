@@ -461,8 +461,8 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
     if minimal:
         return mismatch
     
-    def save_splines_FS_cart(varphi, ell_grid, kappa = kappa, tau = tau):
-        # Keep the geometric quantities in cylindrical phi
+    def save_splines_FS_cart(varphi):
+        # Parametrise using varphi as there could be no nice cylindrical angle
         self.x0_cart_spline = self.convert_to_spline(aligned_position[:,0], grid = varphi)
         self.y0_cart_spline = self.convert_to_spline(aligned_position[:,1], grid = varphi)
         self.z0_cart_spline = self.convert_to_spline(aligned_position[:,2], grid = varphi)
@@ -479,7 +479,7 @@ def invert_frenet_axis(self, curvature, torsion, ell, varphi, plot = False, full
         self.tangent_y_cart_spline = self.convert_to_spline(aligned_T[:,1], grid = varphi)
         self.tangent_z_cart_spline = self.convert_to_spline(aligned_T[:,2], grid = varphi)
 
-    save_splines_FS_cart(varphi, ell)
+    save_splines_FS_cart(varphi)
 
     # Check whether the sense of the axis is in the positive cylindrical angle
     phi = np.unwrap(phi)
