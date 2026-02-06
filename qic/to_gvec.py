@@ -14,8 +14,7 @@ import os
 from tqdm import tqdm
 import netCDF4
 
-
-def make_gvec_frenet_inputs(self, r, nfp, mpol, ntor, ntor_axis):
+def make_gvec_frenet_inputs(self, r, mpol, ntor, ntor_axis, parallel=True):
     """
     Create GVEC Frenet inputs for near-axis expansion.
     
@@ -23,24 +22,14 @@ def make_gvec_frenet_inputs(self, r, nfp, mpol, ntor, ntor_axis):
     ----------
     r : float
         Expansion parameter
-    nfp : int
-        Number of field periods
     mpol : int
         Maximum poloidal mode number
     ntor : int
         Maximum toroidal mode number
     ntor_axis : int
         Maximum toroidal mode number for axis
-    xo_phi : callable
-        Axis position function
-    bo_phi : callable
-        Binormal vector function
-    no_phi : callable
-        Normal vector function
-    X1 : callable
-        First-order X displacement function
-    Y1 : callable
-        First-order Y displacement function
+    parallel : bool, optional
+        If True, use parallel processing. Default is True.
     
     Returns
     -------
@@ -57,6 +46,7 @@ def make_gvec_frenet_inputs(self, r, nfp, mpol, ntor, ntor_axis):
     N_theta = 2 * mpol + 1
     N_zeta = 2 * ntor + 1
     N_zeta_axis = 2 * ntor_axis + 1
+    nfp = self.nfp
         
     # Zeta grid for axis (extended to full 2*pi)
     zeta_extended = np.linspace(0, 2 * np.pi, nfp * N_zeta_axis, endpoint=False) + (gs * 2 * np.pi) / (nfp * N_zeta_axis)
@@ -65,14 +55,14 @@ def make_gvec_frenet_inputs(self, r, nfp, mpol, ntor, ntor_axis):
     # NORMAL FRAME COORDINATES #
     ############################
     # Obtain surface in normal frame
-    X_2D, Y_2D, phi0_2D, phi_2D, (theta, phi) = self.Frenet_to_normal_frame(r=r, ntor=ntor, mpol=mpol, parallel=True, return_theta_phi=True)
+    X_2D, Y_2D, phi0_2D, phi_2D, (theta, phi) = self.Frenet_to_normal_frame(r=r, ntor=ntor, mpol=mpol, parallel=parallel, return_theta_phi=True)
 
     ##########################
     # G-FRAME TRANSFORMATION #
     ##########################
-    # Gamma twist angle
+    # Gamma twist angle (define the reference at half way for SS)
     m = self.helicity
-    gamma_2D = -m * nfp * phi_2D
+    gamma_2D = -m * nfp * (phi_2D - np.pi / nfp)
 
     # Rotated G-frame (X',Y')
     X_G_2D = -Y_2D * np.cos(gamma_2D) + X_2D * np.sin(gamma_2D)
@@ -136,7 +126,7 @@ def make_gvec_frenet_inputs(self, r, nfp, mpol, ntor, ntor_axis):
         "VERSION": 310,
         'axis': {
                 'n_max': ntor_axis,
-                'nzeta': N_zeta_axis,
+                'nzeta': nfp * N_zeta_axis,
                 'zeta': zeta_extended,
                 'xyz': axis_xyz,
                 'Nxyz': axis_Nxyz,
@@ -157,7 +147,104 @@ def make_gvec_frenet_inputs(self, r, nfp, mpol, ntor, ntor_axis):
 
     return GVEC_data
 
-def to_gvec(self, filename, r, nfp, mpol, ntor, ntor_axis, overwrite=False, parallel=True, verbose=False):
+def make_gvec_surface_inputs(self, r, mpol, ntor, ntor_axis, parallel=True):
+    """
+    Create GVEC surface inputs from near-axis expansion.
+    
+    Parameters
+    ----------
+    r : float
+        Expansion parameter
+    mpol : int
+        Maximum poloidal mode number
+    ntor : int
+        Maximum toroidal mode number
+    ntor_axis : int
+        Maximum toroidal mode number for axis
+    parallel : bool, optional
+        If True, use parallel processing. Default is True.
+    
+    Returns
+    -------
+    dict
+        Dictionary containing GVEC input data
+    """
+    #########
+    # GRIDS #
+    #########
+    # Grid shift factor
+    gs = 0.5
+    
+    # Grid dimensions
+    N_theta = 2 * mpol + 1
+    N_zeta = 2 * ntor + 1
+    N_zeta_axis = 2 * ntor_axis + 1
+    nfp = self.nfp
+
+    ############################
+    # NORMAL FRAME COORDINATES #
+    ############################
+    # Obtain surface in normal frame
+    X_2D, Y_2D, Z_2D, _, _ = self.get_boundary_cartesians(r=r, ntheta=N_theta, nphi=N_zeta, parallel = parallel, xsec = False, GVEC_style = True)
+    
+    # ##############################
+    # # OUTPUT DICTIONARY FOR GVEC #
+    # ##############################
+    # """
+    # The dictionary has the following structure:
+    # {
+    #         'NFP': int,
+    #         'VERSION': int,
+    #         'axis': {
+    #             'n_max': int,
+    #             'nzeta': int,
+    #             'zeta': 1D array,
+    #             'xyz': 2D array (3, N),
+    #             'Nxyz': 2D array (3, N),
+    #             'Bxyz': 2D array (3, N)
+    #         },
+    #         'boundary': {
+    #             'm_max': int,
+    #             'n_max': int,
+    #             'lasym': int,
+    #             'ntheta': int,
+    #             'nzeta': int,
+    #             'theta': 1D array,
+    #             'zeta': 1D array,
+    #             'X': 2D array (ntheta, nzeta),
+    #             'Y': 2D array (ntheta, nzeta)
+    #         }
+    #     }
+    # """
+
+    # # Return dictionary with GVEC inputs
+    # GVEC_data = {
+    #     "NFP": nfp,
+    #     "VERSION": 310,
+    #     'axis': {
+    #             'n_max': ntor_axis,
+    #             'nzeta': nfp * N_zeta_axis,
+    #             'zeta': zeta_extended,
+    #             'xyz': axis_xyz,
+    #             'Nxyz': axis_Nxyz,
+    #             'Bxyz': axis_Bxyz
+    #         },
+    #     'boundary': {
+    #             'm_max': mpol,
+    #             'n_max': ntor,
+    #             'lasym': 0,
+    #             'ntheta': N_theta,
+    #             'nzeta': N_zeta,
+    #             'theta': theta,
+    #             'zeta': phi,
+    #             'X': X_G_2D,
+    #             'Y': Y_G_2D
+    #         }
+    # }
+
+    return 0
+
+def to_gvec(self, filename, r, mpol, ntor, ntor_axis, overwrite=False, parallel=True):
     """
     Create a GVEC netCDF file from near-axis expansion data.
     
@@ -167,8 +254,6 @@ def to_gvec(self, filename, r, nfp, mpol, ntor, ntor_axis, overwrite=False, para
         Path to the output netCDF file.
     r : float
         Expansion parameter
-    nfp : int
-        Number of field periods
     mpol : int
         Maximum poloidal mode number
     ntor : int
@@ -179,16 +264,14 @@ def to_gvec(self, filename, r, nfp, mpol, ntor, ntor_axis, overwrite=False, para
         If True, overwrite existing file. Default is False.
     parallel : bool, optional
         If True, use parallel processing. Default is True.
-    verbose : bool, optional
-        If True, display progress bar. Default is False.
-    
+
     Returns
     -------
     str
         Path to the created file.
     """
     # Create GVEC input data dictionary
-    GVEC_data = self.make_gvec_frenet_inputs(r, nfp, mpol, ntor, ntor_axis)
+    GVEC_data = self.make_gvec_frenet_inputs(r, mpol, ntor, ntor_axis, parallel=parallel)
     
     # Write to netCDF file
     write_nc_GVEC(filename, GVEC_data, overwrite=overwrite)

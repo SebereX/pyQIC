@@ -10,25 +10,33 @@ from pathos.multiprocessing import ProcessingPool as Pool
 from tqdm import tqdm
 
   
-def Frenet_to_normal_frame(self, r, mpol=15, ntor = 15, parallel = True):
+def Frenet_to_normal_frame(self, r, mpol=15, ntor = 15, parallel = True, return_theta_phi = False):
     """
     Function to convert the near-axis coordinate system to
-    one purely normal to the axis: X(theta,phi),
-    Y(theta,phi) and phi0(theta,phi) with X,phi,Y the coordinates
+    one purely normal to the axis: X'(theta,phi),
+    Y'(theta,phi) and phi0(theta,phi) with X',phi,Y' the coordinates
     at the surface such that 
-    x-x0 = X(theta,phi) kappa(phi) + Y(theta,phi) tau(phi),
+    x-x0 = X'(theta,phi) kappa(phi) + Y'(theta,phi) tau(phi)
+         = X(theta,phi0) kappa(phi0) + Y(theta,phi0) tau(phi0) + Z(theta,phi0) b(phi0)
      theta Boozer coordinate and phi_0 the axis toroidal angle.
 
     Args:
         r:  near-axis radius r of the desired boundary surface
         ntheta: resolution in the poloidal angle theta
     """
-    if parallel:
-        X_2D, Y_2D, phi0_2D, phi_2D = Frenet_to_normal_frame_parallel(self, r, mpol = mpol, ntor = ntor)
+    if return_theta_phi:
+        if parallel:
+            X_2D, Y_2D, phi0_2D, phi_2D, (theta, phi_conversion) = Frenet_to_normal_frame_parallel(self, r, mpol = mpol, ntor = ntor, return_theta_phi = return_theta_phi)
+        else:
+            X_2D, Y_2D, phi0_2D, phi_2D, (theta, phi_conversion) = Frenet_to_normal_frame_no_parallel(self, r, mpol = mpol, ntor = ntor, return_theta_phi = return_theta_phi)
+        return X_2D, Y_2D, phi0_2D, phi_2D, (theta, phi_conversion)
+    
     else:
-        X_2D, Y_2D, phi0_2D, phi_2D = Frenet_to_normal_frame_no_parallel(self, r, mpol = mpol, ntor = ntor)
-            
-    return X_2D, Y_2D, phi0_2D, phi_2D
+        if parallel:
+            X_2D, Y_2D, phi0_2D, phi_2D = Frenet_to_normal_frame_parallel(self, r, mpol = mpol, ntor = ntor, return_theta_phi= return_theta_phi)
+        else:
+            X_2D, Y_2D, phi0_2D, phi_2D = Frenet_to_normal_frame_no_parallel(self, r, mpol = mpol, ntor = ntor, return_theta_phi= return_theta_phi)  
+        return X_2D, Y_2D, phi0_2D, phi_2D
 
 def Frenet_to_normal_frame_parallel(self, r, mpol = 15, ntor = 15, return_theta_phi = False):
     """
@@ -235,9 +243,9 @@ def Frenet_to_normal_frame_parallel(self, r, mpol = 15, ntor = 15, return_theta_
         axis_phi_z = z0_cart_spline(phi)
 
         # Normal vector
-        normal_phi_x = tangent_x_cart_spline(phi)
-        normal_phi_y = tangent_y_cart_spline(phi)
-        normal_phi_z = tangent_z_cart_spline(phi)
+        normal_phi_x = normal_x_cart_spline(phi)
+        normal_phi_y = normal_y_cart_spline(phi)
+        normal_phi_z = normal_z_cart_spline(phi)
 
         # Binormal vector
         binormal_phi_x = binormal_x_cart_spline(phi)
@@ -440,9 +448,9 @@ def Frenet_to_normal_frame_1_point(phi0, phi, qic, X_spline, Y_spline, Z_spline)
     tangent_y = qic.tangent_y_cart_spline(phi0)
     tangent_z = qic.tangent_z_cart_spline(phi0)
 
-    total_x = qic.x0_cart_spline(phi0) + X_at_phi0 * normal_x + Y_at_phi0 * binormal_x 
-    total_y = qic.y0_cart_spline(phi0) + X_at_phi0 * normal_y + Y_at_phi0 * binormal_y
-    total_z = qic.z0_cart_spline(phi0) + X_at_phi0 * normal_z + Y_at_phi0 * binormal_z
+    total_x = X_at_phi0 * normal_x + Y_at_phi0 * binormal_x # qic.x0_cart_spline(phi0) + 
+    total_y = X_at_phi0 * normal_y + Y_at_phi0 * binormal_y # qic.y0_cart_spline(phi0) +
+    total_z = X_at_phi0 * normal_z + Y_at_phi0 * binormal_z # qic.z0_cart_spline(phi0) +
 
     if qic.order != 'r1':
         Z_at_phi0 = Z_spline(phi0)
@@ -453,15 +461,15 @@ def Frenet_to_normal_frame_1_point(phi0, phi, qic, X_spline, Y_spline, Z_spline)
     ################
     # PLANE AT PHI #
     ################
-    # Axis location
-    axis_phi_x = qic.x0_cart_spline(phi)
-    axis_phi_y = qic.y0_cart_spline(phi)
-    axis_phi_z = qic.z0_cart_spline(phi)
+    # # Axis location
+    # axis_phi_x = qic.x0_cart_spline(phi)
+    # axis_phi_y = qic.y0_cart_spline(phi)
+    # axis_phi_z = qic.z0_cart_spline(phi)
 
     # Normal vector
-    normal_phi_x = qic.tangent_x_cart_spline(phi)
-    normal_phi_y = qic.tangent_y_cart_spline(phi)
-    normal_phi_z = qic.tangent_z_cart_spline(phi)
+    normal_phi_x = qic.normal_x_cart_spline(phi)
+    normal_phi_y = qic.normal_y_cart_spline(phi)
+    normal_phi_z = qic.normal_z_cart_spline(phi)
 
     # Binormal vector
     binormal_phi_x = qic.binormal_x_cart_spline(phi)
@@ -471,13 +479,13 @@ def Frenet_to_normal_frame_1_point(phi0, phi, qic, X_spline, Y_spline, Z_spline)
     #####################
     # TOTAL COORDINATES #
     #####################
-    total_X = (total_x - axis_phi_x) * normal_phi_x + \
-                (total_y - axis_phi_y) * normal_phi_y + \
-                (total_z - axis_phi_z) * normal_phi_z
+    total_X = (total_x - 0) * normal_phi_x + \
+                (total_y - 0) * normal_phi_y + \
+                (total_z - 0) * normal_phi_z
     
-    total_Y = (total_x - axis_phi_x) * binormal_phi_x + \
-                (total_y - axis_phi_y) * binormal_phi_y + \
-                (total_z - axis_phi_z) * binormal_phi_z
+    total_Y = (total_x - 0) * binormal_phi_x + \
+                (total_y - 0) * binormal_phi_y + \
+                (total_z - 0) * binormal_phi_z
 
     return total_X, total_Y, phi
     
