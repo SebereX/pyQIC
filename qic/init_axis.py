@@ -370,7 +370,8 @@ def init_axis(self, omn_complete = True, flag_only_axis = False):
             # Final value for varphi
             varphi = phi + nu
             self.varphi = varphi
-                    # Spline interpolant for nu = varphi-phi
+
+            # Spline interpolant for nu = varphi-phi
             self.nu = nu
 
             # Final value for B0
@@ -440,6 +441,12 @@ def init_axis(self, omn_complete = True, flag_only_axis = False):
         # else:
         #     self.lasym = self.lasym_axis or np.abs(self.sigma0)>0 or np.any(np.array(self.B2c_svals) > 0.0) or np.any(np.array(self.B2c_svals) < 0.0)
 
+        # Spline interpolant for nu = varphi-phi
+        nu = self.varphi-self.phi
+        self.nu = nu
+        self.nu_spline = self.convert_to_spline(nu, varphi = False)
+        self.nu_spline_of_varphi = self.convert_to_spline(nu, varphi = True)
+
         if self.flag_splines:
             # Functions that converts a toroidal angle phi0 on the axis to the axis radial and vertical coordinates
             self.R0_func = self.convert_to_spline(R0, varphi = False)
@@ -456,14 +463,13 @@ def init_axis(self, omn_complete = True, flag_only_axis = False):
             self.tangent_phi_spline = self.convert_to_spline(self.tangent_cylindrical[:,1], varphi = False)
             self.tangent_z_spline = self.convert_to_spline(self.tangent_cylindrical[:,2], varphi = False)
 
+            # Spline interpolants for the Cartesian components of the Frenet-Serret frame
+            save_splines_FS_cart(self)
+
             # Spline interpolant for the magnetic field on-axis as a function of phi (not varphi)
             self.B0_spline = self.convert_to_spline(self.B0, varphi = False)
 
-        # Spline interpolant for nu = varphi-phi
-        nu = self.varphi-self.phi
-        self.nu = nu
-        self.nu_spline = self.convert_to_spline(nu, varphi = False)
-        self.nu_spline_of_varphi = self.convert_to_spline(nu, varphi = True)
+        
 
 # Function to evaluate R/Z and their derivatives
 def compute_R0_Z0_and_derivatives(self, Raxis, Zaxis, omn_complete):
@@ -578,3 +584,83 @@ def compute_R0_Z0_and_derivatives(self, Raxis, Zaxis, omn_complete):
     self.lasym = self.lasym_axis
     
     return R0, R0p, R0pp, R0ppp, Z0, Z0p, Z0pp, Z0ppp 
+
+def save_splines_FS_cart(self, n_samp = None):
+    """
+    Save splines for the axis position and Frenet-Serret frame in Cartesian coordinates.
+    """
+    def change_vector_from_cylindrical(phi, vector):
+        new_vector = np.zeros(np.shape(vector))
+        new_vector[:,0] = np.cos(phi) * vector[:,0] - np.sin(phi) * vector[:,1] 
+        new_vector[:,1] = np.sin(phi) * vector[:,0] + np.cos(phi) * vector[:,1] 
+        new_vector[:,2] = vector[:,2] 
+
+        return new_vector
+    
+    def cylindrical_to_cartesian(R0, Z0, phi):
+        # Construct Cartesian coordinates (x, y, z)
+        x = R0 * np.cos(phi)
+        y = R0 * np.sin(phi)
+        z = Z0
+        return x, y, z
+    
+    ############################
+    # FULL GRID IN CYLINDRICAL # (important because cartesian coordinates are not N-periodic in phi)
+    ############################
+    # Extended phi grid
+    n_samp = self.nfp * self.nphi if n_samp is None else n_samp
+    phi_e = np.linspace(0, 2*np.pi, n_samp)
+
+    # Corresponding varphi grid
+    varphi_e = phi_e + self.nu_spline(phi_e)
+
+    # Evaluate R0/Z0 and Frenet-Serret frame on the extended grid
+    R0 = self.R0_func(phi_e)
+    Z0 = self.Z0_func(phi_e)
+    normal_cylindrical = np.zeros((n_samp, 3))
+    binormal_cylindrical = np.zeros((n_samp, 3))
+    tangent_cylindrical = np.zeros((n_samp, 3))
+    
+    normal_cylindrical[:,0] = self.normal_R_spline(phi_e)
+    normal_cylindrical[:,1] = self.normal_phi_spline(phi_e)
+    normal_cylindrical[:,2] = self.normal_z_spline(phi_e)
+    binormal_cylindrical[:,0] = self.binormal_R_spline(phi_e)
+    binormal_cylindrical[:,1] = self.binormal_phi_spline(phi_e)
+    binormal_cylindrical[:,2] = self.binormal_z_spline(phi_e)
+    tangent_cylindrical[:,0] = self.tangent_R_spline(phi_e)
+    tangent_cylindrical[:,1] = self.tangent_phi_spline(phi_e)
+    tangent_cylindrical[:,2] = self.tangent_z_spline(phi_e)  
+
+    #####################
+    # AXIS IN CARTESIAN #
+    #####################
+    # Axis position in Cartesian
+    x0_cart, y0_cart, z0_cart = cylindrical_to_cartesian(R0, Z0, phi_e)
+    axis_position_cart = np.array([x0_cart, y0_cart, z0_cart]).T
+    
+    # Save axis position splines in Cartesian
+    self.x0_cart_spline = self.convert_to_spline(axis_position_cart[:,0], grid = varphi_e)
+    self.y0_cart_spline = self.convert_to_spline(axis_position_cart[:,1], grid = varphi_e)
+    self.z0_cart_spline = self.convert_to_spline(axis_position_cart[:,2], grid = varphi_e)
+
+    #########################
+    # FS FRAME IN CARTESIAN #
+    #########################
+    # Change of basis from cylindrical to Cartesian for the Frenet-Serret frame
+    normal_cart = change_vector_from_cylindrical(phi_e, normal_cylindrical)
+    binormal_cart = change_vector_from_cylindrical(phi_e, binormal_cylindrical)
+    tangent_cart = change_vector_from_cylindrical(phi_e, tangent_cylindrical)
+
+    # Due to sign, for half helicities, the configurations have sign flips in normal/binormal. We consider a continuous frame within 
+    # a whole 2pi turn, and will be discontinuous at phi = 0. Keep it in cylindrical phi.
+    self.normal_x_cart_spline = self.convert_to_spline(normal_cart[:,0], grid = varphi_e, half_period = self.flag_half)
+    self.normal_y_cart_spline = self.convert_to_spline(normal_cart[:,1], grid = varphi_e, half_period = self.flag_half)
+    self.normal_z_cart_spline = self.convert_to_spline(normal_cart[:,2], grid = varphi_e, half_period = self.flag_half)
+    self.binormal_x_cart_spline = self.convert_to_spline(binormal_cart[:,0], grid = varphi_e, half_period = self.flag_half)
+    self.binormal_y_cart_spline = self.convert_to_spline(binormal_cart[:,1], grid = varphi_e, half_period = self.flag_half)
+    self.binormal_z_cart_spline = self.convert_to_spline(binormal_cart[:,2], grid = varphi_e, half_period = self.flag_half)
+    self.tangent_x_cart_spline = self.convert_to_spline(tangent_cart[:,0], grid = varphi_e)
+    self.tangent_y_cart_spline = self.convert_to_spline(tangent_cart[:,1], grid = varphi_e)
+    self.tangent_z_cart_spline = self.convert_to_spline(tangent_cart[:,2], grid = varphi_e)
+
+    return 

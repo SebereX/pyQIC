@@ -43,7 +43,7 @@ def newton(f, x0, jac, niter=60, tol=1e-18, nlinesearch=20):
         for jlinesearch in range(nlinesearch):
             x = x0 + step_scale * step_direction
             residual = f(x)
-            residual_norm = np.sqrt(np.sum(residual * residual))
+            residual_norm = np.linalg.norm(residual * residual)
             logger.info('  Line search step {} residual {}'.format(jlinesearch, residual_norm))
             if residual_norm < last_residual_norm:
                 x_best = np.copy(x)

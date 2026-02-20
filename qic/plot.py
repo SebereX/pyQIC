@@ -604,7 +604,7 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
         return ax
 
 
-def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, ntor=25, parallel=True, xsec = True, verbose = False):
+def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, parallel=True, xsec = True, GVEC_style = False, verbose = False):
     '''
     Function that, for a given near-axis radial coordinate r, outputs
     the [X,Y,Z] components of the boundary using the cartesian coords. The resolution along the toroidal
@@ -615,14 +615,15 @@ def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20,
       r (float): near-axis radius r where to create the surface
       ntheta (int): Number of grid points to plot in the poloidal angle.
       nphi   (int): Number of grid points to plot in the toroidal angle.
-      ntheta_fourier (int): Resolution in the Fourier transform to cylindrical coordinates
-      mpol: resolution in poloidal Fourier space
-      ntor: resolution in toroidal Fourier space
     '''
     if self.nfp > 1 and verbose: print('Should be used only for N=1')
     # Get surface shape parametrised by phi (on-axis) and theta
-    theta = np.linspace(0, 2 * np.pi, ntheta, endpoint=True)
-    varphi = np.linspace(0, 2 * np.pi, nphi, endpoint=True)
+    if GVEC_style:
+        theta = np.linspace(0, 2 * np.pi, ntheta, endpoint=False)
+        varphi = np.linspace(0, 2 * np.pi, nphi, endpoint=False)
+    else:
+        theta = np.linspace(0, 2 * np.pi, ntheta, endpoint=True)
+        varphi = np.linspace(0, 2 * np.pi, nphi, endpoint=True)
     X_2D = np.zeros((ntheta, nphi))
     Y_2D = np.zeros((ntheta, nphi))
     X_fs_2D = np.zeros((ntheta, nphi))
@@ -951,8 +952,8 @@ def plot_boundary_cartesians(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20
     """
     # assert self.nfp ==1,'Should be used only for N=1'
 
-    x_2D_plot, y_2D_plot, z_2D_plot, X_fs_2D, Y_fs_2D = self.get_boundary_cartesians(r=r, ntheta=ntheta, nphi=nphi, ntheta_fourier=ntheta_fourier, \
-                                                                    mpol = mpol, ntor = ntor, parallel = parallel)
+    x_2D_plot, y_2D_plot, z_2D_plot, X_fs_2D, Y_fs_2D = self.get_boundary_cartesians(r=r, ntheta=ntheta, nphi=nphi, \
+                                                                    parallel = parallel)
     
     phi = np.linspace(0, 2 * np.pi, nphi)  # Endpoint = true and no nfp factor, because this is what is used in get_boundary()
     X_fs_2D_spline = interp1d(phi, X_fs_2D, axis=1)

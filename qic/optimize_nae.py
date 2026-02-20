@@ -50,7 +50,7 @@ def opt_fun_stel(x_iter, stel, x_param_label, fun_opt, info = {'Nfeval':0}, res_
             x_iter_all[stel.names.index(label)] = x_iter[ind]
 
     # Construct the new nae solution
-    stel.set_dofs(x_iter_all)
+    stel.set_dofs(x_iter_all, quiet = True)
     # Evaluate the residual
     res = fun_opt(stel, extras)
     if verbose:
@@ -231,7 +231,7 @@ def optimise_params(stel, x_param_label, fun_opt = fun, verbose = 0, maxiter = 2
     else:
         for ind, label in enumerate(x_parameter_label_checked):
             x[stel.names.index(label)] = opt.x[ind]
-    stel.set_dofs(x)
+    stel.set_dofs(x, quiet = True)
     
     # Plot the residual history if verbose
     if verbose:
@@ -243,7 +243,6 @@ def optimise_params(stel, x_param_label, fun_opt = fun, verbose = 0, maxiter = 2
         plt.xlabel('Nb. Iterations')
         plt.ylabel('Objective function')
         plt.yscale('log')
-        plt.show()
     
     # Returns the optimisation state message
     return opt.message
