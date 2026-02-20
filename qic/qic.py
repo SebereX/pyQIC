@@ -38,7 +38,7 @@ class Qic():
     from .fourier_interpolation import fourier_interpolation
     from .Frenet_to_cylindrical import Frenet_to_cylindrical, to_RZ
     from .optimize_nae import optimise_params, min_geo_qi_consistency
-    from .shape_gradient import mag_well_reshape, compute_L_F_matrices, compute_sensitivity_Shafranov_shift
+    from .shape_gradient import mag_well_reshape, minimal_reshape, compute_L_F_matrices, compute_sensitivity_Shafranov_shift
     from .to_vmec import to_vmec
     from .util import B_mag
     from .util_interp import convert_to_spline
