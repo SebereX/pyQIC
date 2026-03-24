@@ -638,7 +638,7 @@ def save_splines_FS_cart(self, n_samp = None):
     x0_cart, y0_cart, z0_cart = cylindrical_to_cartesian(R0, Z0, phi_e)
     axis_position_cart = np.array([x0_cart, y0_cart, z0_cart]).T
     
-    # Save axis position splines in Cartesian
+    # Save axis position splines in Cartesian (as a function of varphi)
     self.x0_cart_spline = self.convert_to_spline(axis_position_cart[:,0], grid = varphi_e)
     self.y0_cart_spline = self.convert_to_spline(axis_position_cart[:,1], grid = varphi_e)
     self.z0_cart_spline = self.convert_to_spline(axis_position_cart[:,2], grid = varphi_e)

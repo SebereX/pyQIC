@@ -29,12 +29,13 @@ class Qic():
     from .calculate_r3 import calculate_r3
     from .compute_B2_for_r1 import compute_B2_for_r1
     from .fqs import multi_cubic
+    from .load_from_db import from_db
     from .mercier import mercier, mercier_detailed
     from .precession import plot_precession_different_alpha, maxj_at_bottom
     from .omnigeneity import compute_eps_eff, compute_eps_eff_anal, omn_reshape
     from .plot import plot, get_boundary, get_boundary_cartesians, B_fieldline, B_contour, plot_axis
     from .r_singularity import calculate_r_singularity, calculate_r_singularity_opt
-    from .plot import plot, plot_boundary, get_boundary, plot_boundary_cartesians, get_boundary_cartesians, B_fieldline, B_contour, plot_axis, B_densityplot
+    from .plot import plot, plot_boundary, get_boundary, plot_boundary_cartesians, get_boundary_cartesians, B_fieldline, B_contour, plot_axis, B_densityplot, plot_3d, plot_and_crop_config_3D_nice
     from .fourier_interpolation import fourier_interpolation
     from .Frenet_to_cylindrical import Frenet_to_cylindrical, to_RZ
     from .Frenet_to_normal_frame import Frenet_to_normal_frame, Frenet_to_normal_frame_no_parallel
@@ -42,7 +43,7 @@ class Qic():
     from .shape_gradient import mag_well_reshape, compute_L_F_matrices, compute_sensitivity_Shafranov_shift
     from .to_vmec import to_vmec
     from .to_gvec import make_gvec_frenet_inputs, to_gvec
-    from .util import B_mag
+    from .util import B_mag, to_Fourier_cartesian
     from .util_interp import convert_to_spline
     from .input_structure import evaluate_input_on_grid
     
@@ -1077,6 +1078,7 @@ class Qic():
             raise ValueError('Unrecognized configuration name')
 
         return cls(**kwargs)
+
 
     # @classmethod
     # def from_cxx(cls, filename):

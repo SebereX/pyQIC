@@ -14,6 +14,9 @@ import mplcursors
 from tqdm import tqdm
 from multiprocessing import Manager, Pool
 from scipy.optimize import fsolve
+import plotly.graph_objects as go
+import io
+from PIL import Image
 import os
 
 def plot(self, newfigure=True, show=True, savefig=None, plot_geo = False):
@@ -123,7 +126,7 @@ def plot(self, newfigure=True, show=True, savefig=None, plot_geo = False):
         subplot('Z2c')
         subplot('Z2s')
         data = self.r_singularity_vs_varphi
-        data[data > 1e20] = np.NAN
+        data[data > 1e20] = np.nan
         subplot('r_singularity', data=data, y0=True)
     if self.omn:
         subplot('alpha')
@@ -603,8 +606,7 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
                 plt.show()
         return ax
 
-
-def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, parallel=True, xsec = True, GVEC_style = False, verbose = False):
+def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, parallel=True, xsec = True, GVEC_style = False, verbose = False, field_period = False):
     '''
     Function that, for a given near-axis radial coordinate r, outputs
     the [X,Y,Z] components of the boundary using the cartesian coords. The resolution along the toroidal
@@ -620,10 +622,10 @@ def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, parallel=True, xse
     # Get surface shape parametrised by phi (on-axis) and theta
     if GVEC_style:
         theta = np.linspace(0, 2 * np.pi, ntheta, endpoint=False)
-        varphi = np.linspace(0, 2 * np.pi, nphi, endpoint=False)
+        varphi = -np.linspace(0, 2 * np.pi/self.nfp if field_period else 2 * np.pi, nphi, endpoint=False)
     else:
         theta = np.linspace(0, 2 * np.pi, ntheta, endpoint=True)
-        varphi = np.linspace(0, 2 * np.pi, nphi, endpoint=True)
+        varphi = np.linspace(0, 2 * np.pi/self.nfp if field_period else 2 * np.pi, nphi, endpoint=True)
     X_2D = np.zeros((ntheta, nphi))
     Y_2D = np.zeros((ntheta, nphi))
     X_fs_2D = np.zeros((ntheta, nphi))
@@ -1116,6 +1118,298 @@ def plot_boundary_cartesians(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20
             # Show figures
             plt.show()
     return ax
+
+def plot_and_crop_config_3D_nice(stel, r_ref = 0.1, shaded = True, image_name = "Figures/test.png", r_reg = True, view = 'corner', tag = False):
+    """
+    Plot a nice 3D figure of the configuration and save it as an image, avoiding clipping.
+
+    Parameters
+    ----------
+    stel: Qic
+        NAE object
+    r_ref: float
+        Reference minor radius for plotting
+    shaded: bool
+        Whether to use shaded plotting
+    image_name: str
+        Name of the output image file
+    r_reg: bool
+        Whether to use reference r or min(r_ref, 0.5*r_singularity)
+    view: str
+        View angle for the plot.
+    Returns
+    -------
+    fig: plotly.graph_objects.Figure
+        The generated 3D plot figure.
+    """
+    ####################
+    # SET DYNAMIC ZOOM #
+    #################### 
+    positions = []
+    def is_clipped(fig, bg_color=(255,255,255), width=800, height=800):
+        """
+        Check if any part of the 3D plot is clipped against the borders of the image. It checks if the color of the border pixels
+        differs from the background color (indicating clipping).
+
+        Parameters
+        ----------
+        fig: plotly.graph_objects.Figure
+            The 3D plot figure.
+        bg_color: tuple
+            The RGB background color to consider as non-clipped.
+        width: int
+            Width of the image in pixels.
+        height: int
+            Height of the image in pixels.
+        Returns
+        -------
+        bool
+            True if any part of the plot is clipped, False otherwise.
+        """
+        # Convert the figure to an image buffer
+        buf = io.BytesIO()
+        fig.write_image(buf, format='png', width=width, height=height, scale=1)
+        buf.seek(0)
+
+        # Load the image from the buffer and register colors
+        img = Image.open(buf).convert('RGBA')
+        arr = np.array(img)
+        alpha = arr[:,:,3]
+        rgb = arr[:,:,:3]
+
+        # Borders
+        top = rgb[0,:,:]; top_a = alpha[0,:]
+        bottom = rgb[-1,:,:]; bottom_a = alpha[-1,:]
+        left = rgb[:,0,:]; left_a = alpha[:,0]
+        right = rgb[:,-1,:]; right_a = alpha[:,-1]
+        border_rgb = np.concatenate([top, bottom, left, right], axis=0)
+        border_a = np.concatenate([top_a, bottom_a, left_a, right_a], axis=0)
+
+        # Check for clipping: non-background color with non-zero alpha  
+        mask = (border_a > 0) & (np.any(border_rgb != bg_color, axis=-1))
+    
+        return np.any(mask)
+
+    # Radius for plotting
+    r = np.min([r_ref, 0.5 * stel.r_singularity]) if r_reg else r_ref
+
+    # Iterate plotting with decreasing zoom until no clipping is detected
+    max_tries = 10
+    tried_zoom = 1.1 # Starting zoom
+    for _ in range(max_tries):
+        # Plot the configuration
+        fig = plot_3d(
+            stel, ntheta=200, nphi=300, ntheta_fourier=20, r=r,
+            show=False, save_fig=False, zoom=tried_zoom, view=view, positions=positions, shaded=shaded
+        )
+        fig.update_traces(showscale=False)
+
+        # Remove title & extra padding
+        fig.update_layout(
+            title=None,  # Remove title
+            margin=dict(l=0, r=0, t=0, b=0),  # Remove all extra space
+            scene=dict(
+                xaxis=dict(visible=False),  # Hide x-axis
+                yaxis=dict(visible=False),  # Hide y-axis
+                zaxis=dict(visible=False),  # Hide z-axis
+            ),
+            paper_bgcolor="rgba(0,0,0,0)",  # Transparent background
+            plot_bgcolor="rgba(0,0,0,0)",  # Transparent plot area
+        )
+
+        # Add text on image corner
+        if tag:
+            fig.add_annotation(
+                text=tag,
+                xref="paper", yref="paper",
+                x=0.95, y=0.05,
+                showarrow=False,
+                font=dict(size=16, color="black"),
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                bordercolor="black",
+                borderwidth=1,
+            )
+
+        # Check for clipping
+        if not is_clipped(fig):
+            break
+        tried_zoom *= 1.1  # Zoom out if clipped
+
+    # Save the final image
+    fig.write_image(image_name, width=800, height=800, scale=1)
+
+    return fig
+
+def plot_3d(stel, ntheta = 200, nphi = 300, ntheta_fourier = 20, r = 0.1, save_fig = False, fig_folder = "temp/", name = 'temp', zoom = 1.0, show = True, view = 'corner', shaded = False, positions = [], fun_surface = None):
+    """
+    Plot 3D surface of the NAE boundary using Plotly.
+
+    Parameters
+    ----------
+        stel: QIC class object
+            QIC class object.
+        ntheta: int, optional
+            Number of theta points for the grid. Default is 200.
+        nphi: int, optional
+            Number of phi points for the grid. Default is 300.
+        ntheta_fourier: int, optional
+            Number of Fourier modes for theta, used when cylindrical coordinates are used. Default is 20.
+        r: float, optional
+            Minor radius for the boundary surface. Default is 0.1.
+        save_fig: bool, optional
+            Whether to save the figure as a PNG file. Default is False.
+        fig_folder: str, optional
+            Folder to save the figure if save_fig is True. Default is "temp/".
+        name: str, optional
+            Name of the figure file if saved. Default is 'temp'.
+        zoom: float, optional
+            Zoom factor for the camera distance. Default is 1.0.
+        show: bool, optional
+            Whether to display the figure interactively. Default is True.
+        view: str, optional
+            View angle for the camera. Options are 'corner', 'top', 'side_x', 'side_y', 'top_side_x', 'top_side_y'. Default is 'corner'.
+        shaded: bool, optional
+            Use gray shading for the surface if True (else |B|). Default is False.
+        positions: list, optional
+            List to append the (x,y,z) collocation points defining the surface. Default is empty list.
+        fun_surface: function, optional
+            If provided, this function will be called to compute the color values for the surface. It should take (r, theta_2D, phi_2D) as input and return a 2D array of the same shape for coloring. If not provided, |B| will be used for coloring when shaded=False.
+            
+    Returns
+    -------
+        fig: plotly.graph_objects.Figure
+            Plotly figure object representing the 3D surface plot.
+    """
+    # Choose domain for plotting: whole torus
+    phi1D = np.linspace(0,2*np.pi, nphi)
+
+    # Get data for the boundary of NAE
+    if True: # Use by default the Cartesian construction (even if cylindrical is available)
+        x_2D_plot, y_2D_plot, z_2D_plot, _, _ = stel.get_boundary_cartesians(r=r, ntheta=ntheta, nphi=nphi, parallel = False, xsec = False)
+    else:
+        x_2D_plot, y_2D_plot, z_2D_plot, _ = stel.get_boundary(r=r, ntheta=ntheta, nphi=nphi, ntheta_fourier=ntheta_fourier, phi1d = phi1D)
+
+    # Create poloidal/toroidal grid
+    theta1D = np.linspace(0, 2 * np.pi, ntheta)
+    phi2D, theta2D = np.meshgrid(phi1D, theta1D)
+
+    # Compute the surface range
+    x_range = np.max(x_2D_plot) - np.min(x_2D_plot)
+    y_range = np.max(y_2D_plot) - np.min(y_2D_plot)
+    z_range = np.max(z_2D_plot) - np.min(z_2D_plot)
+    max_range = max(x_range, y_range, z_range)
+
+    # Set a proportional distance for the camera to ensure the plot fits
+    eye_distance = 0.5*max_range * zoom  # Adjust multiplier as needed
+
+    # Choose surface color and shading
+    if shaded:
+        # Use a constant gray color and enable lighting for shading
+        surface_kwargs = dict(
+            z=z_2D_plot,
+            x=x_2D_plot,
+            y=y_2D_plot,
+            surfacecolor=np.ones_like(z_2D_plot),  # uniform color
+            colorscale=[[0, 'gray'], [1, 'gray']],
+            showscale=False,
+            lighting=dict(ambient=0.5, diffuse=0.8, fresnel=0.1, specular=0.5, roughness=0.5),
+            lightposition=dict(x=100, y=200, z=0)
+        )
+    else:
+        # Use Bmag and RdBu_r colormap
+        if fun_surface is not None:
+            surfacecolor = fun_surface(r, theta2D, phi2D)
+        else:
+            surfacecolor = stel.B_mag(r, theta2D, phi2D, Boozer_toroidal = bool(stel.nfp == 1))
+        surface_kwargs = dict(
+            z=z_2D_plot,
+            x=x_2D_plot,
+            y=y_2D_plot,
+            surfacecolor=surfacecolor,
+            colorscale='RdYlBu_r',
+            colorbar=dict(tickvals=[surfacecolor.min(), surfacecolor.max()])
+        )
+
+    # Create the figure
+    fig = go.Figure(data=[go.Surface(**surface_kwargs)])
+
+    # Set the camera view
+    if view == 'corner':
+        view_props = dict(x=eye_distance, y=eye_distance, z=eye_distance)
+    elif view == 'top':
+        view_props = dict(x=0, y=0, z=2*eye_distance)
+    elif view == 'side_x':
+        view_props = dict(x=2*eye_distance, y=0, z=0)
+    elif view == 'side_y':
+        view_props = dict(x=0, y=2*eye_distance, z=0)
+    elif view == 'top_side_x':
+        view_props = dict(x=2*eye_distance, y=0, z=2*eye_distance)
+    elif view == 'top_side_y':
+        view_props = dict(x=0, y=2*eye_distance, z=2*eye_distance)
+    elif view == 'custom':
+        pass
+    else:
+        raise ValueError(f"Invalid view '{view}'")
+    
+    # Update layout to remove axes, set background color to white, and use LaTeX font
+    if view == 'custom':
+        fig.update_layout(
+        scene=dict(
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            zaxis=dict(visible=False),
+            aspectmode='data'  # lock aspect ratio to data units
+        ),
+        autosize=True,
+    )
+        
+    else:
+        fig.update_layout(
+            title=name,
+            scene=dict(
+                xaxis=dict(
+                    showgrid=False, 
+                    zeroline=False, 
+                    showticklabels=False,  # Hide x-axis labels
+                    ticks="",  # Remove ticks
+                    visible=False  # Completely hide the x-axis
+                ),
+                yaxis=dict(
+                    showgrid=False, 
+                    zeroline=False, 
+                    showticklabels=False,  # Hide y-axis labels
+                    ticks="",  # Remove ticks
+                    visible=False  # Completely hide the y-axis
+                ),
+                zaxis=dict(
+                    showgrid=False, 
+                    zeroline=False, 
+                    showticklabels=False,  # Hide z-axis labels
+                    ticks="",  # Remove ticks
+                    visible=False  # Completely hide the z-axis
+                ),
+                camera_eye=view_props,  # Set the camera angle
+                aspectmode='data'
+            ),
+            paper_bgcolor='white',  # Set paper background to white
+            plot_bgcolor='white',  # Set plot background to white
+            font=dict(family='Computer Modern Serif', size=18),  # Use LaTeX-style font
+            width=800,
+            height=600
+        )
+
+    # Return data
+    positions.append((x_2D_plot,y_2D_plot, z_2D_plot))
+
+    # Save the figure if required
+    if save_fig:
+        fig.write_image(fig_folder + name.replace(' ', '_') + '_3d_plot.png', scale=5)
+
+    # Show figure interactively
+    if show:
+        fig.show()
+
+    return fig
 
 def B_fieldline(self, r=0.1, alpha=0, phimax=None, nphi=400, show=True, savefig=None):
     '''
