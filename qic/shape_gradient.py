@@ -530,6 +530,80 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
         else:
             return mod_X2c, mod_X2s
 
+def minimal_reshape(stel, check = False, run = True):
+    """
+    Reshape the 2nd order near-axis field to have minimal 2nd order shaping.
+    Args:
+        stel: (Qic) the magnetic field information
+        simple: (bool) simple reshaping using the X2c and X2s L2 minimisation; if not simple, use the more sophisticated variational formulation
+        check: (bool) check the implementation
+        run: (bool) run the self-consistent second order solve using the reshaping.
+    Returns:
+        mod_X2c: (array) the modified X2c (if run is False)
+        mod_X2s: (array) the modified X2s (if run is False)
+        stel: (Qic) the reshaped magnetic field (if run is True)
+    """
+    ##################
+    # SHAPE GRADIENT #
+    ##################
+    # Check that second order object
+    assert stel.order == 'r2' or stel.order == 'r3', Warning("No second order object was passed")
+    # Ready to obtain Y matrices
+    Y_mat_data = {}
+    # Compute L and F matrices
+    L_matrix, F_matrix, right_hand_side = compute_L_F_matrices(stel, Y_mat = Y_mat_data)
+    # Extract Y matrices
+    Y_0, Y_bar, Y_hat = Y_mat_data["Y_0"], Y_mat_data["Y_bar"], Y_mat_data["Y_hat"]
+
+    ###################
+    # IDEAL RESHAPING #
+    ###################
+    if check:
+        ## Check Y matrices 
+        shape_0 = np.concatenate((stel.X20,stel.Y20))
+        X2 = np.concatenate((stel.X2c,stel.X2s))
+        Y_mat_res = np.matmul(Y_hat, X2) + np.matmul(Y_bar, shape_0) + Y_0
+        Y_ideal = np.concatenate((stel.Y2c, stel.Y2s))
+        assert np.abs(Y_mat_res - Y_ideal).max() < 1e-10, Warning("Error in Y solve")
+    
+    nphi = stel.nphi
+    ## Construct M matrix ##
+    # L⁻¹
+    L_inv = np.linalg.inv(L_matrix)
+    # L⁻¹F matrix
+    L_inv_F = np.matmul(L_inv, F_matrix)
+    # Y subpart of M
+    Y_sub_mat = Y_hat - np.matmul(Y_bar, L_inv_F) 
+    # M matrix
+    M_mat = np.eye(2*stel.nphi) + np.matmul(L_inv_F.transpose(), L_inv_F) + np.matmul(Y_sub_mat.transpose(), Y_sub_mat)
+
+    ## Construct vector Λ ##
+    # L⁻¹ f
+    temp_vec = np.matmul(L_inv, right_hand_side)
+    # Λ vector
+    temp_mat = L_inv_F - np.matmul(Y_bar.transpose(), Y_sub_mat)
+    Lambda = np.matmul(temp_mat.transpose(), temp_vec) - np.matmul(Y_sub_mat.transpose(), Y_0)
+
+    ## Required shaping ##
+    sh_Lambda = np.linalg.solve(M_mat, Lambda)
+
+    # Initialise list for mod shaping
+    mod_X2c = sh_Lambda[:nphi]
+    mod_X2s = sh_Lambda[nphi:]
+
+    if run:
+        # Prepare 2nd order reshaping inputs
+        X2c_in = {"type": 'grid', "input_value": mod_X2c}
+        X2s_in = {"type": 'grid', "input_value": mod_X2s}
+        # Solve re-shaped configuration
+        stel.X2c_in = X2c_in
+        stel.X2s_in = X2s_in
+        stel.calculate_r2()
+
+        return stel
+    else:
+        return mod_X2c, mod_X2s
+
 def compute_sensitivity_Shafranov_shift(stel, L_matrix = None, check_lin = False):
     """
     Compute the sensitivity of the Shafranov shift to variations in the pressure p2.

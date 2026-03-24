@@ -40,7 +40,7 @@ class Qic():
     from .Frenet_to_cylindrical import Frenet_to_cylindrical, to_RZ
     from .Frenet_to_normal_frame import Frenet_to_normal_frame, Frenet_to_normal_frame_no_parallel
     from .optimize_nae import optimise_params, min_geo_qi_consistency
-    from .shape_gradient import mag_well_reshape, compute_L_F_matrices, compute_sensitivity_Shafranov_shift
+    from .shape_gradient import mag_well_reshape, minimal_reshape, compute_L_F_matrices, compute_sensitivity_Shafranov_shift
     from .to_vmec import to_vmec
     from .to_gvec import make_gvec_frenet_inputs, to_gvec
     from .util import B_mag, to_Fourier_cartesian

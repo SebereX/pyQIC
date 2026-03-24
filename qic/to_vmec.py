@@ -8,7 +8,7 @@ from .Frenet_to_cylindrical import Frenet_to_cylindrical
 from .util import mu0, to_Fourier
 from .obtain_current_version import get_qic_info
 
-def to_vmec(self, filename, r=0.1, params=dict(), ntheta=20, ntorMax=14):
+def to_vmec(self, filename, r=0.1, params=dict(), ntheta=20, ntorMax=14, B_scale = 1.0, extra_comments = None):
     """
     Outputs the near-axis configuration calculated with pyQIC to
     a text file that is able to be read by VMEC.
@@ -47,9 +47,10 @@ def to_vmec(self, filename, r=0.1, params=dict(), ntheta=20, ntorMax=14):
     if "precon_type" not in params.keys():
         params["precon_type"] = 'NONE'
     if "precon_thresh" not in params.keys():
-        params["precon_thresh"] = 1.00000e-30    
+        params["precon_thresh"] = 1.00000e-30   
 
-    phiedge = np.pi * r * r * self.spsi * self.Bbar
+
+    phiedge = np.pi * r * r * self.spsi * self.Bbar * B_scale
 
     # Set pressure Profile
     temp = - self.p2 * r * r
@@ -86,6 +87,8 @@ def to_vmec(self, filename, r=0.1, params=dict(), ntheta=20, ntorMax=14):
     else:
         file_object.write('! Near-axis parameters:  radius r = '+str(r)+', etabar = '+str(self.etabar)+'\n')
         file_object.write('! nphi = '+str(self.nphi)+', order = '+self.order+', sigma0 = '+str(self.sigma0)+', I2 = '+str(self.I2)+', B0 = '+str(np.mean(self.Bbar))+'\n')
+    if extra_comments is not None:
+        file_object.write('! ' + str(extra_comments) + '\n')
     file_object.write('! Resolution parameters: ntheta = '+str(ntheta)+', mpol = '+str(mpol)+', ntor = '+str(ntor)+'\n')
     file_object.write('!----- Runtime Parameters -----\n')
     file_object.write('&INDATA\n')
@@ -95,6 +98,8 @@ def to_vmec(self, filename, r=0.1, params=dict(), ntheta=20, ntorMax=14):
     file_object.write('  NS_ARRAY = '+str(params["ns_array"])[1:-1]+'\n')
     file_object.write('  FTOL_ARRAY = '+str(params["ftol_array"])[1:-1]+'\n')
     file_object.write('  NITER_ARRAY = '+str(params["niter_array"])[1:-1]+'\n')
+    if 'lbsubs' in params.keys():
+        file_object.write('  LBSUBS = '+str(params["lbsubs"])+'\n')
     file_object.write("  PRECON_TYPE = '"+str(params["precon_type"])+"'\n")
     file_object.write('  PREC2D_THRESHOLD = '+str(params["precon_thresh"])+'\n')
     if "pre_niter" in params.keys():
