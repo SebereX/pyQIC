@@ -5,6 +5,7 @@ Scripts to load QI configs from the database.
 import ijson
 import numpy as np
 import scipy.integrate as integrate
+from scipy.integrate import cumulative_trapezoid as cumtrapz
 from scipy.interpolate import make_interp_spline
 
 class Struct():
@@ -242,7 +243,7 @@ def construct_qic(stel_in, model = False, smooth = False, no_alpha = False, verb
     # DEFINE ELL #
     ##############
     # Calculate the length along the curve
-    ell = integrate.cumtrapz(np.append(stel_in.d_l_d_varphi,stel_in.d_l_d_varphi[0]), np.append(stel_in.varphi, stel_in.varphi[0]+2*np.pi/stel_in.nfp),\
+    ell = cumtrapz(np.append(stel_in.d_l_d_varphi,stel_in.d_l_d_varphi[0]), np.append(stel_in.varphi, stel_in.varphi[0]+2*np.pi/stel_in.nfp),\
                             initial = 0.0)
     stel_in.L_in = ell[-1]
     stel_in.ell = ell[:-1]

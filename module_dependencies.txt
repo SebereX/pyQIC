@@ -1,0 +1,155 @@
+# Summary of unique external dependencies (install via pip/conda):
+# numpy, scipy, matplotlib, BAD (external), qsc, booz-xform, tqdm, netCDF4, ijson, sklearn, mplcursors, multiprocessing, plotly, PIL, os, datetime, logging, contextlib
+#
+# Note: qsc and booz-xform are not used in the main modules.
+# Note: BAD and VMEC are external codes and may require manual installation.
+
+# pyQIC Module Dependency Map
+# This file lists each module and the libraries it imports (directly or via relative import).
+# External dependencies are marked with '*'.
+
+qic/__init__.py:
+  - .spectral_diff_matrix
+  - .fourier_interpolation
+  - .reverse_frenet_serret
+  - .util_interp
+  - .compute_B2_for_r1
+  - .qic
+  - .newton
+
+qic/shape_gradient.py:
+  - numpy*
+  - .util
+  - BAD* (external)
+  - matplotlib*
+  - .fourier_interpolation
+
+qic/temp.py:
+  - numpy*
+  - matplotlib*
+  - scipy*
+  - sklearn*
+
+qic/to_vmec.py:
+  - datetime*
+  - numpy*
+  - .Frenet_to_cylindrical
+  - .util
+  - .obtain_current_version
+
+qic/calculate_r2.py:
+  - logging*
+  - numpy*
+  - .util
+  - .optimize_nae
+  - .spectral_diff_matrix
+  - scipy*
+
+qic/init_axis.py:
+  - logging*
+  - numpy*
+  - scipy*
+  - .spectral_diff_matrix
+  - .util
+  - .input_structure
+  - .fourier_interpolation
+  - .reverse_frenet_serret
+
+qic/plot.py:
+  - numpy*
+  - scipy*
+  - matplotlib*
+  - mplcursors*
+  - tqdm*
+  - multiprocessing*
+  - plotly*
+  - PIL*
+  - os*
+  - .util
+
+qic/to_gvec.py:
+  - datetime*
+  - numpy*
+  - .Frenet_to_cylindrical
+  - .Frenet_to_normal_frame
+  - .util
+  - .obtain_current_version
+  - multiprocessing*
+  - scipy*
+  - os*
+  - tqdm*
+  - netCDF4*
+
+qic/compute_B2_for_r1.py:
+  - logging*
+  - numpy*
+  - .util
+  - scipy*
+  - .optimize_nae
+  - .spectral_diff_matrix
+
+qic/precession.py:
+  - numpy*
+  - .util
+  - BAD* (external)
+  - matplotlib*
+  - .fourier_interpolation
+
+qic/load_from_db.py:
+  - ijson*
+  - numpy*
+  - scipy*
+
+qic/calculate_r1.py:
+  - logging*
+  - numpy*
+  - scipy*
+  - .util
+  - .newton
+
+qic/util_interp.py:
+  - logging*
+  - numpy*
+  - scipy*
+
+qic/input_structure.py:
+  - logging*
+  - numpy*
+  - .fourier_interpolation
+  - scipy*
+  - .util
+
+qic/qic.py:
+  - os*
+  - logging*
+  - contextlib*
+  - numpy*
+  - scipy*
+  - matplotlib*
+  - .init_axis
+  - .calculate_r1
+  - .grad_B_tensor
+  - .calculate_r2
+  - .calculate_r3
+  - .compute_B2_for_r1
+  - .fqs
+  - .load_from_db
+  - .mercier
+  - .precession
+  - .omnigeneity
+  - .plot
+  - .r_singularity
+  - .fourier_interpolation
+  - .Frenet_to_cylindrical
+  - .Frenet_to_normal_frame
+  - .optimize_nae
+  - .shape_gradient
+  - .to_vmec
+  - .to_gvec
+  - .util
+  - .util_interp
+  - .input_structure
+
+# * = external dependency (install via pip/conda)
+# Relative imports are other modules in the qic package.
+# Some modules (like BAD, VMEC) are external and may require manual installation.

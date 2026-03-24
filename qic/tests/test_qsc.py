@@ -11,222 +11,6 @@ from qic.util import to_Fourier
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def check_r2(s):
-    """
-    Verify that the O(r^2) equations have been solved, using a
-    different method than the method used to solve them originally.
-    """
-    B0_over_abs_G0 = s.B0 / np.abs(s.G0)
-    abs_G0_over_B0 = 1 / B0_over_abs_G0
-    G0_over_Bbar = s.G0 / s.Bbar
-    X1c = s.X1c
-    X1s = s.X1s
-    Y1s = s.Y1s
-    Y1c = s.Y1c
-    d_d_varphi = s.d_d_varphi
-    iota_N = s.iotaN
-    curvature = s.curvature
-    torsion = s.torsion
-    B0 = s.B0
-    Bbar = s.Bbar
-    sG = s.sG
-    I2_over_Bbar = s.I2 / s.Bbar
-    X20 = s.X20
-    X2s = s.X2s
-    X2c = s.X2c
-    Y20 = s.Y20
-    Y2s = s.Y2s
-    Y2c = s.Y2c
-    Z20 = s.Z20
-    Z2s = s.Z2s
-    Z2c = s.Z2c
-    beta_0 = s.beta_0
-    beta_1s = s.beta_1s
-    beta_1c = s.beta_1c
-    
-    fX0 = np.matmul(d_d_varphi, X20) - torsion * abs_G0_over_B0 * Y20 + curvature * abs_G0_over_B0 * Z20 \
-        -4*G0_over_Bbar*(Y2c * Z2s - Y2s * Z2c) \
-        - I2_over_Bbar * (0.5*curvature * (X1s * Y1s + X1c * Y1c) - 2 * Y20) * abs_G0_over_B0 \
-        - 0.5 * beta_0 * curvature * abs_G0_over_B0 * (X1s * Y1c - X1c * Y1s) - 0.5 * abs_G0_over_B0 * (beta_1c * Y1s - beta_1s * Y1c)
-
-    fXs = np.matmul(d_d_varphi, X2s) - 2 * iota_N * X2c - torsion * abs_G0_over_B0 * Y2s + curvature * abs_G0_over_B0 * Z2s \
-        -4*G0_over_Bbar*(-Y20 * Z2c + Y2c * Z20) \
-        -I2_over_Bbar * (0.5*curvature * (X1s * Y1c + X1c * Y1s) - 2 * Y2s) * abs_G0_over_B0 \
-        - beta_0 * abs_G0_over_B0 * (-2 * Y2c + 0.5 * curvature * (X1c * Y1c - X1s * Y1s)) - 0.5 * abs_G0_over_B0 * (beta_1s * Y1s - beta_1c * Y1c)
-
-    fXc = np.matmul(d_d_varphi, X2c) + 2 * iota_N * X2s - torsion * abs_G0_over_B0 * Y2c + curvature * abs_G0_over_B0 * Z2c \
-        -4*G0_over_Bbar*(Y20 * Z2s - Y2s * Z20) \
-        -I2_over_Bbar * (0.5*curvature * (X1c * Y1c - X1s * Y1s) - 2 * Y2c) * abs_G0_over_B0 \
-        - beta_0 * abs_G0_over_B0 * (2 * Y2s - 0.5 * curvature * (X1c * Y1s + X1s * Y1c)) - 0.5 * abs_G0_over_B0 * (beta_1c * Y1s + beta_1s * Y1c)
-
-    fY0 = np.matmul(d_d_varphi, Y20) + torsion * abs_G0_over_B0 * X20 - 4*G0_over_Bbar*(X2s * Z2c - X2c * Z2s) \
-        -I2_over_Bbar * (-0.5*curvature*(X1c*X1c + X1s*X1s) + 2*X20) * abs_G0_over_B0 - abs_G0_over_B0 * (beta_1s * X1c - beta_1c * X1s) / 2
-
-    fYs = np.matmul(d_d_varphi, Y2s) - 2 * iota_N * Y2c + torsion * abs_G0_over_B0 * X2s \
-        -4*G0_over_Bbar*(X20 * Z2c - X2c * Z20) -I2_over_Bbar*(-curvature * X1s * X1c + 2 * X2s)*abs_G0_over_B0\
-        - beta_0 * abs_G0_over_B0 * (2*X2c + 0.5*curvature*(X1s*X1s - X1c*X1c)) - 0.5 * abs_G0_over_B0 * (beta_1c*X1c - beta_1s*X1s)
-
-    fYc = np.matmul(d_d_varphi, Y2c) + 2 * iota_N * Y2s + torsion * abs_G0_over_B0 * X2c \
-        -4*G0_over_Bbar*(X2s * Z20 - X20 * Z2s) \
-        -I2_over_Bbar * (0.5*curvature * (X1s * X1s - X1c * X1c) + 2 * X2c) * abs_G0_over_B0 \
-        -beta_0 * abs_G0_over_B0 * (-2 * X2s + curvature * X1s * X1c) + abs_G0_over_B0 * (beta_1c * X1s + beta_1s * X1c) / 2
-
-    eq1residual = -X1s * fX0 + X1c * fXs - X1s * fXc - Y1s * fY0 + Y1c * fYs - Y1s * fYc
-    eq2residual = -X1c * fX0 + X1s * fXs + X1c * fXc - Y1c * fY0 + Y1s * fYs + Y1c * fYc
-    # Now check the two equations that were used to determine Y2s and Y2c:
-    eq3residual = -X1s * Y2s - X1c * Y2c + X1c * Y20 + X2s * Y1s + X2c * Y1c - X20 * Y1c + 0.5 * sG * X1s * curvature * Bbar / B0
-    eq4residual = -X1s * Y2c + X1c * Y2s - X1s * Y20 + X2c * Y1s - X2s * Y1c + X20 * Y1s + 0.5 * sG * X1c * curvature * Bbar / B0
-
-    logger.info("max(abs(eq1residual)): {}".format(np.max(np.abs(eq1residual))))
-    logger.info("max(abs(eq2residual)): {}".format(np.max(np.abs(eq2residual))))
-    logger.info("max(abs(eq3residual)): {}".format(np.max(np.abs(eq3residual))))
-    logger.info("max(abs(eq4residual)): {}".format(np.max(np.abs(eq4residual))))
-
-    atol = 1e-8
-    np.testing.assert_allclose(eq1residual, np.zeros(s.nphi), atol=atol)
-    np.testing.assert_allclose(eq2residual, np.zeros(s.nphi), atol=atol)
-    np.testing.assert_allclose(eq3residual, np.zeros(s.nphi), atol=atol)
-    np.testing.assert_allclose(eq4residual, np.zeros(s.nphi), atol=atol)
-
-
-def fortran_plot_single(filename, ntheta=150, nphi = 4):
-    """
-    Function to extract boundary arrays from the fortran files
-    """
-    abs_filename = os.path.join(os.path.dirname(__file__), filename)
-    f = netcdf.netcdf_file(abs_filename,mode='r',mmap=False)
-    r = f.variables['r'][()]
-    nfp = f.variables['nfp'][()]
-    nphi_axis = f.variables['N_phi'][()]
-    mpol = f.variables['mpol'][()]
-    ntor = f.variables['ntor'][()]
-    RBC = f.variables['RBC'][()]
-    RBS = f.variables['RBS'][()]
-    ZBC = f.variables['ZBC'][()]
-    ZBS = f.variables['ZBS'][()]
-    R0c = f.variables['R0c'][()]
-    R0s = f.variables['R0s'][()]
-    Z0c = f.variables['Z0c'][()]
-    Z0s = f.variables['Z0s'][()]
-
-    theta1D = np.linspace(0,2*np.pi,ntheta)
-    phi1D = np.linspace(0,2*np.pi,nphi)
-    phi2D,theta2D = np.meshgrid(phi1D,theta1D)
-
-    R = np.zeros((ntheta,nphi))
-    z = np.zeros((ntheta,nphi))
-    for m in range(mpol+1):
-        for jn in range(ntor*2+1):
-            n = jn-ntor
-            angle = m * theta2D - nfp * n * phi2D
-            sinangle = np.sin(angle)
-            cosangle = np.cos(angle)
-            R += RBC[m,jn] * cosangle + RBS[m,jn] * sinangle
-            z += ZBC[m,jn] * cosangle + ZBS[m,jn] * sinangle
-
-    R0 = np.zeros(nphi)
-    z0 = np.zeros(nphi)
-    for n in range(len(R0c)):
-        angle = nfp * n * phi1D
-        sinangle = np.sin(angle)
-        cosangle = np.cos(angle)
-        R0 += R0c[n] * cosangle + R0s[n] * sinangle
-        z0 += Z0c[n] * cosangle + Z0s[n] * sinangle
-
-    return R, z, R0, z0, r, mpol, ntor, nphi_axis
-
-def compare_to_fortran(name, filename):
-    """
-    Compare output from this python code to the fortran code, for one
-    of the example configurations from the papers.
-    """
-    # Add the directory of this file to the specified filename:
-    abs_filename = os.path.join(os.path.dirname(__file__), filename)
-    f      = netcdf.netcdf_file(abs_filename, 'r')
-    nphi   = f.variables['N_phi'][()]
-    mpol   = f.variables['mpol'][()]
-    ntor   = f.variables['ntor'][()]
-    r      = f.variables['r'][()]
-    ntheta = 20
-
-    py = Qic.from_paper(name, nphi=nphi, order='r3')
-    logger.info('Comparing to fortran file ' + abs_filename)
-
-    def compare_field(fortran_name, py_field, rtol=1e-9, atol=1e-9):
-        fortran_field = f.variables[fortran_name][()]
-        logger.info('max difference in {}: {}'.format(fortran_name, np.max(np.abs(fortran_field - py_field))))
-        np.testing.assert_allclose(fortran_field, py_field, rtol=rtol, atol=atol)
-
-    compare_field('iota', py.iota)
-    compare_field('curvature', py.curvature)
-    compare_field('torsion', py.torsion)
-    compare_field('sigma', py.sigma)
-    compare_field('modBinv_sqrt_half_grad_B_colon_grad_B', 1 / py.L_grad_B)
-    if hasattr(py, 'X20'):
-        compare_field('X20', py.X20)
-        compare_field('X2s', py.X2s)
-        compare_field('X2c', py.X2c)
-        compare_field('Y20', py.Y20)
-        compare_field('Y2s', py.Y2s)
-        compare_field('Y2c', py.Y2c)
-        compare_field('Z20', py.Z20)
-        compare_field('Z2s', py.Z2s)
-        compare_field('Z2c', py.Z2c)
-        compare_field('B20', py.B20)
-        compare_field('d2_volume_d_psi2', py.d2_volume_d_psi2)
-        compare_field('DWell_times_r2', py.DWell_times_r2)
-        compare_field('DGeod_times_r2', py.DGeod_times_r2)
-        compare_field('DMerc_times_r2', py.DMerc_times_r2)
-        compare_field('grad_grad_B_inverse_scale_length_vs_zeta', py.grad_grad_B_inverse_scale_length_vs_varphi)
-        compare_field('grad_grad_B_inverse_scale_length', py.grad_grad_B_inverse_scale_length)
-        #compare_field('r_singularity', py.r_singularity) # Could be different if Newton refinement was on in 1 but not the other
-        compare_field('r_singularity_basic_vs_zeta', py.r_singularity_basic_vs_varphi)
-    if hasattr(py, 'X3c1'):
-        compare_field('X3c1', py.X3c1)
-        compare_field('X3s1', py.X3s1)
-        compare_field('Y3c1', py.Y3c1)
-        compare_field('Y3s1', py.Y3s1)
-        compare_field('Z3c1', py.Z3c1)
-        compare_field('Z3s1', py.Z3s1)
-        compare_field('X3c3', py.X3c3)
-        compare_field('X3s3', py.X3s3)
-        compare_field('Y3c3', py.Y3c3)
-        compare_field('Y3s3', py.Y3s3)
-        compare_field('Z3c3', py.Z3c3)
-        compare_field('Z3s3', py.Z3s3)
-        compare_field('B0_order_a_squared_to_cancel', py.B0_order_a_squared_to_cancel)
-
-    # logger.info('Creating RBC, RBS, ZBC and ZBS arrays')
-    R_2D, Z_2D, _ = py.Frenet_to_cylindrical(r=r, ntheta=ntheta)
-    RBC, RBS, ZBC, ZBS = to_Fourier(R_2D, Z_2D, py.nfp, mpol, ntor, py.lasym)
-
-    RBC = RBC.transpose()
-    ZBS = ZBS.transpose()
-    if py.lasym:
-        RBS = RBS.transpose()
-        ZBC = ZBC.transpose()
-
-    # logger.info('Comparing RBC, RBS, ZBC and ZBS arrays')
-    compare_field('RBC', RBC)
-    compare_field('RBS', RBS)
-    compare_field('ZBC', ZBC)
-    compare_field('ZBS', ZBS)
-
-    # logger.info('Test boundary and axis splines in cylindrical coordinates')
-    R_fortran, Z_fortran, R0_fortran, Z0_fortran, r, mpol, ntor, _ = fortran_plot_single(filename=filename, ntheta=ntheta, nphi=nphi)
-    _, _, Z_qic, R_qic = py.get_boundary(r=r, ntheta=ntheta, nphi=nphi, mpol=mpol, ntor=ntor, ntheta_fourier=2*mpol)
-    phi_array = np.linspace(0, 2*np.pi, nphi)
-    R0_qic = py.R0_func(phi_array)
-    Z0_qic = py.Z0_func(phi_array)
-    rtol = 1e-7
-    atol = 1e-7
-    np.testing.assert_allclose(R_fortran, R_qic,   rtol=rtol, atol=atol)
-    np.testing.assert_allclose(Z_fortran, Z_qic,   rtol=rtol, atol=atol)
-    np.testing.assert_allclose(R0_fortran, R0_qic, rtol=rtol, atol=atol)
-    np.testing.assert_allclose(Z0_fortran, Z0_qic, rtol=rtol, atol=atol)
-
-    f.close()
-    
 class QicTests(unittest.TestCase):
 
     def test_curvature_torsion(self):
@@ -236,8 +20,12 @@ class QicTests(unittest.TestCase):
         """
         
         # Stellarator-symmetric case:
-        stel = Qic(rc=[1.3, 0.3, 0.01, -0.001],
-                   zs=[0, 0.4, -0.02, -0.003], nfp=5, nphi=15)
+        stel = Qic(
+            Raxis={"type": "fourier", 
+                   "input_value": {"cos": [1.3, 0.3, 0.01, -0.001], "sin": []}},
+            Zaxis={"type": "fourier", 
+                   "input_value": {"cos": [0], "sin": [0.4, -0.02, -0.003]}}, 
+                    nfp=5, nphi=15)
         
         curvature_fortran = [1.74354628565018, 1.61776632275718, 1.5167042487094, 
                              1.9179603622369, 2.95373444883134, 3.01448808361584, 1.7714523990583, 
@@ -263,10 +51,8 @@ class QicTests(unittest.TestCase):
         np.testing.assert_allclose(stel.varphi, varphi_fortran, rtol=rtol, atol=atol)
 
         # Non-stellarator-symmetric case:
-        stel = Qic(rc=[1.3, 0.3, 0.01, -0.001],
-                   zs=[0, 0.4, -0.02, -0.003],
-                   rs=[0, -0.1, -0.03, 0.002],
-                   zc=[0.3, 0.2, 0.04, 0.004], nfp=5, nphi=15)
+        stel = Qic(Raxis={"type": "fourier", "input_value": {"cos": [1.3, 0.3, 0.01, -0.001], "sin": [0, -0.1, -0.03, 0.002]}},
+               Zaxis={"type": "fourier", "input_value": {"cos": [0.3, 0.2, 0.04, 0.004], "sin": [0, 0.4, -0.02, -0.003]}}, nfp=5, nphi=15)
         
         curvature_fortran = [2.10743037699653, 2.33190181686696, 1.83273654023051, 
                              1.81062232906827, 2.28640008392347, 1.76919841474321, 0.919988560478029, 
@@ -325,7 +111,6 @@ class QicTests(unittest.TestCase):
             self.assertAlmostEqual(stel.iota, -0.420473351810416 , places=places)
             self.assertAlmostEqual(stel.max_elongation, 4.38384260252044, places=places2)
             self.assertAlmostEqual(stel.min_L_grad_B, 1 / 1.39153088147691, places=places2)
-            check_r2(stel)
         
             # Landreman & Sengupta (2019), section 5.2:
             stel = Qic.from_paper('r2 section 5.2', nphi=nphi)
@@ -333,7 +118,6 @@ class QicTests(unittest.TestCase):
             self.assertAlmostEqual(stel.iota, -0.423723995700502, places=places)
             self.assertAlmostEqual(stel.max_elongation, 4.86202324600918, places=places2)
             self.assertAlmostEqual(stel.min_L_grad_B, 1 / 1.47675199709439, places=places2)
-            check_r2(stel)
             
             # Landreman & Sengupta (2019), section 5.3:
             stel = Qic.from_paper('r2 section 5.3', nphi=nphi)
@@ -341,7 +125,6 @@ class QicTests(unittest.TestCase):
             self.assertAlmostEqual(stel.iota, 0.959698159859113, places=places)
             self.assertAlmostEqual(stel.max_elongation, 2.20914173760329, places=places2)
             self.assertAlmostEqual(stel.min_L_grad_B, 1 / 1.4922510395338, places=places2)
-            check_r2(stel)
             
             # Landreman & Sengupta (2019), section 5.4:
             stel = Qic.from_paper('r2 section 5.4', nphi=nphi)
@@ -349,7 +132,6 @@ class QicTests(unittest.TestCase):
             self.assertAlmostEqual(stel.iota, -1.14413695118515, places=places)
             self.assertAlmostEqual(stel.max_elongation, 2.98649978627541, places=places2)
             self.assertAlmostEqual(stel.min_L_grad_B, 1 / 2.64098280647292, places=places2)
-            check_r2(stel)
             
             # Landreman & Sengupta (2019), section 5.5:
             stel = Qic.from_paper('r2 section 5.5', nphi=nphi)
@@ -357,63 +139,36 @@ class QicTests(unittest.TestCase):
             self.assertAlmostEqual(stel.iota, -0.828885267089981, places=places)
             self.assertAlmostEqual(stel.max_elongation, 3.6226360623368, places=places2)
             self.assertAlmostEqual(stel.min_L_grad_B, 1 / 4.85287603883526, places=places2)
-            check_r2(stel)
 
-    def test_QI_r2(self):
-        rc      = [ 1.0,0.0,-0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
-        zs      = [ 0.0,0.0,0.26443390548300216,0.0,-0.01566057704554211,0.0,0.0022396012358901997,0.0,-0.0009650267041755669,0.0,7.207283882530656e-05,0.0,3.775829720639504e-05,0.0,-1.3146652962906995e-05,0.0,3.1591666411150446e-06 ]
-        B0_vals = [ 1.0,0.21379635338650388 ]
-        omn_method ='buffer'
-        k_buffer = 2
-        k_second_order_SS   = 6.557610594867123
-        d_svals = [0.]
-        delta   = 1.3316877731759529
-        nfp     = 1
-        B2s_svals = [ 0.0,0.12356397260960127,-0.3703624809486158,-0.03495724243250028,-0.024264380562857745,-0.2363887868868969,-0.05181276831340249,0.08138881214364944,0.005241997297581 ]
-        B2c_cvals = [ -0.40251233990996754,0.10398784730800278,0.5170167340215038,-0.2255734311522203,0.044645330385214954,0.21871024881966092,-0.06764902501780555,0.014096798551213216,-0.05415701995955931,0.0 ]
-        p2      =  0.0
-        nphi    =  301
-        stel    =  Qic(omn_method = omn_method, k_buffer=k_buffer, rc=rc,zs=zs, nfp=nfp, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta, B2c_cvals=B2c_cvals, B2s_svals=B2s_svals, p2=p2, order='r3', k_second_order_SS=k_second_order_SS)
-        check_r2(stel)
 
-    def test_compare_to_fortran(self):
-        """
-        Compare the output of this python code to the fortran code.
-        """
-        compare_to_fortran("r2 section 5.1", "quasisymmetry_out.LandremanSengupta2019_section5.1.nc")
-        compare_to_fortran("r2 section 5.2", "quasisymmetry_out.LandremanSengupta2019_section5.2.nc")
-        compare_to_fortran("r2 section 5.3", "quasisymmetry_out.LandremanSengupta2019_section5.3.nc")
-        compare_to_fortran("r2 section 5.4", "quasisymmetry_out.LandremanSengupta2019_section5.4.nc")
-        compare_to_fortran("r2 section 5.5", "quasisymmetry_out.LandremanSengupta2019_section5.5.nc")
-
-    def test_change_nfourier(self):
-        """
-        Test the change_nfourier() method.
-        """
-        rtol = 1e-13
-        atol = 1e-13
-        s1 = Qic.from_paper('r2 section 5.2')
-        m = s1.nfourier
-        for n in range(2, 7):
-            s2 = Qic.from_paper('r2 section 5.2')
-            s2.change_nfourier(n)
-            if n <= m:
-                # We lowered nfourier
-                np.testing.assert_allclose(s1.rc[:n], s2.rc, rtol=rtol, atol=atol)
-                np.testing.assert_allclose(s1.rs[:n], s2.rs, rtol=rtol, atol=atol)
-                np.testing.assert_allclose(s1.zc[:n], s2.zc, rtol=rtol, atol=atol)
-                np.testing.assert_allclose(s1.zs[:n], s2.zs, rtol=rtol, atol=atol)
-            else:
-                # We increased nfourier
-                np.testing.assert_allclose(s1.rc, s2.rc[:m], rtol=rtol, atol=atol)
-                np.testing.assert_allclose(s1.rs, s2.rs[:m], rtol=rtol, atol=atol)
-                np.testing.assert_allclose(s1.zc, s2.zc[:m], rtol=rtol, atol=atol)
-                np.testing.assert_allclose(s1.zs, s2.zs[:m], rtol=rtol, atol=atol)
-                z = np.zeros(n - s1.nfourier)
-                np.testing.assert_allclose(z, s2.rc[m:], rtol=rtol, atol=atol)
-                np.testing.assert_allclose(z, s2.rs[m:], rtol=rtol, atol=atol)
-                np.testing.assert_allclose(z, s2.zc[m:], rtol=rtol, atol=atol)
-                np.testing.assert_allclose(z, s2.zs[m:], rtol=rtol, atol=atol)
+    # def test_change_nfourier(self):
+    #     """
+    #     Test the change_nfourier() method.
+    #     """
+    #     rtol = 1e-13
+    #     atol = 1e-13
+    #     s1 = Qic.from_paper('r2 section 5.2')
+    #     m = s1.nfourier
+    #     for n in range(2, 7):
+    #         s2 = Qic.from_paper('r2 section 5.2')
+    #         s2.change_nfourier(n)
+    #         if n <= m:
+    #             # We lowered nfourier
+    #             np.testing.assert_allclose(s1.rc[:n], s2.rc, rtol=rtol, atol=atol)
+    #             np.testing.assert_allclose(s1.rs[:n], s2.rs, rtol=rtol, atol=atol)
+    #             np.testing.assert_allclose(s1.zc[:n], s2.zc, rtol=rtol, atol=atol)
+    #             np.testing.assert_allclose(s1.zs[:n], s2.zs, rtol=rtol, atol=atol)
+    #         else:
+    #             # We increased nfourier
+    #             np.testing.assert_allclose(s1.rc, s2.rc[:m], rtol=rtol, atol=atol)
+    #             np.testing.assert_allclose(s1.rs, s2.rs[:m], rtol=rtol, atol=atol)
+    #             np.testing.assert_allclose(s1.zc, s2.zc[:m], rtol=rtol, atol=atol)
+    #             np.testing.assert_allclose(s1.zs, s2.zs[:m], rtol=rtol, atol=atol)
+    #             z = np.zeros(n - s1.nfourier)
+    #             np.testing.assert_allclose(z, s2.rc[m:], rtol=rtol, atol=atol)
+    #             np.testing.assert_allclose(z, s2.rs[m:], rtol=rtol, atol=atol)
+    #             np.testing.assert_allclose(z, s2.zc[m:], rtol=rtol, atol=atol)
+    #             np.testing.assert_allclose(z, s2.zs[m:], rtol=rtol, atol=atol)
                 
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,8 @@ import logging
 import numpy as np
 from .util import mu0
 import scipy.integrate as integrate
+from scipy.integrate import cumulative_trapezoid as cumtrapz
+from scipy.integrate import trapezoid as trapz
 from .optimize_nae import min_geo_qi_consistency
 from .spectral_diff_matrix import spectral_diff_matrix_extended
 
@@ -450,11 +452,11 @@ def compute_B2_for_r1(self, verbose = False, debug = False):
     varphi_temp = np.linspace(0.0, 1.0, self.nphi, endpoint = False) * 2*np.pi/self.nfp
     B_hat_sp = self.convert_to_spline(B_hat, varphi = True)
     B_hat_cent = B_hat_sp(varphi_temp)
-    int_varphi_Bhat = integrate.cumtrapz(B_hat_cent, varphi_temp, initial = 0.0)
-    int_Bhat = integrate.trapz(np.append(B_hat_cent, B_hat_cent[0]), np.append(varphi_temp, 2*np.pi/self.nfp))
+    int_varphi_Bhat = cumtrapz(B_hat_cent, varphi_temp, initial = 0.0)
+    int_Bhat = trapz(np.append(B_hat_cent, B_hat_cent[0]), np.append(varphi_temp, 2*np.pi/self.nfp))
     term_1 = int_varphi_Bhat
     term_2 = 0.5 * (1 - self.nfp*varphi_temp/np.pi) * int_Bhat
-    term_3 = - 0.5 * self.nfp / np.pi * integrate.trapz(np.append(int_varphi_Bhat, int_Bhat), np.append(varphi_temp, 2*np.pi/self.nfp))
+    term_3 = - 0.5 * self.nfp / np.pi * trapz(np.append(int_varphi_Bhat, int_Bhat), np.append(varphi_temp, 2*np.pi/self.nfp))
     f_2_bar = term_1 + term_2 + term_3            
     f_2_bar_sp = self.convert_to_spline(np.append(f_2_bar, int_Bhat - 0.5 * int_Bhat + term_3), \
                                         grid = np.append(varphi_temp, 2*np.pi/self.nfp), periodic = False)

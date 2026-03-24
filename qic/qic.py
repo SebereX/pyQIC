@@ -123,7 +123,7 @@ class Qic():
         # If frenet = False, then usual cylindrical description of the axis
         if not frenet:
             # Complete axis to enforce vanishing curvature
-            if axis_complete == True and Raxis["type"] == 'fourier':
+            if axis_complete == True and Raxis["type"] == 'fourier' and self.omn:
                 self.axis_complete = True
             else:
                 self.axis_complete = False
@@ -458,6 +458,7 @@ class Qic():
 
         # Set d
         if not self.omn:
+            assert self.d_in["type"] == 'scalar', "For QS fields, d must be a scalar input to define etabar."
             # If QS, define etabar from d
             self.etabar = self.d_in["input_value"]
             self.d = self.evaluate_input_on_grid(self.d_in, self.phi)
@@ -614,7 +615,7 @@ class Qic():
                      "input_value": {"cos": [], "sin": [0, -0.045]}}
             d = {"type": 'scalar',
                      "input_value": -0.9}
-            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=3, d = d)
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=3, d = d, phi_shift=0)
                 
         elif name == "r1 section 5.2":
             """ The configuration from Landreman, Sengupta, Plunk (2019), section 5.2 """
@@ -624,7 +625,7 @@ class Qic():
                      "input_value": {"cos": [], "sin": [0, -0.21]}}
             d = {"type": 'scalar',
                      "input_value": -2.25}
-            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=4, d = d)
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=4, d = d, phi_shift=0)
                 
         elif name == "r1 section 5.3":
             """ The configuration from Landreman, Sengupta, Plunk (2019), section 5.3 """
@@ -634,7 +635,7 @@ class Qic():
                      "input_value": {"cos": [0, -0.025], "sin": [0, -0.042]}}
             d = {"type": 'scalar',
                      "input_value": -1.1}
-            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=3, d = d, sigma0=-0.6)
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=3, d = d, sigma0=-0.6, phi_shift=0)
                 
         elif name == "r2 section 5.1" or name == '5.1' or name == 1:
             """ The configuration from Landreman & Sengupta (2019), section 5.1 """
@@ -644,7 +645,7 @@ class Qic():
                      "input_value": {"cos": [], "sin": [0, 0.154, 0.0111]}}
             d = {"type": 'scalar',
                      "input_value": 0.64}
-            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=2, d = d, B2c=-0.00322, order='r3')
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=2, d = d, B2c=-0.00322, order='r3', phi_shift=0)
             
         elif name == "r2 section 5.2" or name == '5.2' or name == 2:
             """ The configuration from Landreman & Sengupta (2019), section 5.2 """
@@ -654,7 +655,7 @@ class Qic():
                      "input_value": {"cos": [], "sin": [0, 0.159, 0.0165, 0.000985]}}
             d = {"type": 'scalar',
                      "input_value": 0.632}
-            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=2, d = d, B2c = -0.158, order='r3')
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=2, d = d, B2c = -0.158, order='r3', phi_shift=0)
                              
         elif name == "r2 section 5.3" or name == '5.3' or name == 3:
             """ The configuration from Landreman & Sengupta (2019), section 5.3 """
@@ -664,7 +665,7 @@ class Qic():
                      "input_value": {"cos": [], "sin": [0, -0.09]}}
             d = {"type": 'scalar',
                      "input_value": 0.95}
-            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=2, d = d, B2c = -0.7, I2=0.9, p2=-600000., order='r3')
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=2, d = d, B2c = -0.7, I2=0.9, p2=-600000., order='r3', phi_shift=0)
                              
         elif name == "r2 section 5.4" or name == '5.4' or name == 4:
             """ The configuration from Landreman & Sengupta (2019), section 5.4 """
@@ -674,7 +675,7 @@ class Qic():
                      "input_value": {"cos": [], "sin": [0, 0.1581, 0.01820, 0.001548, 7.772e-05]}}
             d = {"type": 'scalar',
                      "input_value": 1.569}
-            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=4, d = d, B2c = 0.1348, order='r3')
+            add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=4, d = d, B2c = 0.1348, order='r3', phi_shift=0)
                              
         elif name == "r2 section 5.5" or name == '5.5' or name == 5:
             """ The configuration from Landreman & Sengupta (2019), section 5.5 """
@@ -685,7 +686,7 @@ class Qic():
             d = {"type": 'scalar',
                      "input_value": 2.5}
             add_default_args(kwargs, Raxis = Raxis, Zaxis = Zaxis, omn = False, nfp=5, d = d, sigma0=0.3, B2c = 1., I2=1.6, \
-                             B2s=3., p2=-0.5e7, order='r3')        
+                             B2s=3., p2=-0.5e7, order='r3', phi_shift=0)        
         
         elif name == "QI" or name == "QI r1 Plunk" or name == "QI Plunk":
             """ The configuration from Plunk, Landreman & Helander (2019), section 8.2 """

@@ -421,12 +421,12 @@ def calculate_r2(self, no_rc = False, no_interp = False):
     ######################################
     # REPRESENTATION IN QI ANGULAR BASIS #
     ######################################
-    if self.omn:
-        # Construct some useful splines
-        self.B20_spline = self.convert_to_spline(self.B20, varphi = False)
-        self.B2c_spline = self.convert_to_spline(self.B2c, varphi = False)
-        self.B2s_spline = self.convert_to_spline(self.B2s, varphi = False)
+    # Construct some useful splines
+    self.B20_spline = self.convert_to_spline(self.B20, varphi = False)
+    self.B2c_spline = self.convert_to_spline(self.B2c, varphi = False)
+    self.B2s_spline = self.convert_to_spline(self.B2s, varphi = False)
 
+    if self.omn:
         # In QI, the 2nd order field may be written as
         # B2 = B20 + B2cQI cos[2*(θ-ιφ+ν)] + B2sQI sin[2*(θ-ιφ+ν)] where ν = ιφ-α and α is self.alpha
         #    = B20 + B2c   cos[2*(θ-Nφ)]   + B2s   sin[2*(θ-Nφ)]
@@ -454,7 +454,11 @@ def calculate_r2(self, no_rc = False, no_interp = False):
         self.B2cQI_ideal = (self.d * self.B0 / d_B0_d_varphi / d_B0_d_varphi /4) * (2*d_B0_d_varphi * \
                             (self.d*d_B0_d_varphi+self.B0*d_d_d_varphi) - self.B0*self.d*d_2_B0_d_varphi2) * np.cos(2*self.alpha_buf) - \
                             (self.d *self.d * self.B0 * self.B0 / d_B0_d_varphi /2)*np.sin(2*self.alpha_buf) * d_alpha_buf_d_varphi
-        
+        # Sub inf values by large number to avoid spline problems
+        max_sub = np.max([1e20, 100*np.max(abs(self.B2cQI_ideal[np.isfinite(self.B2cQI_ideal)]))])
+        self.B2cQI_ideal[np.isinf(self.B2cQI_ideal)] = max_sub  
+        self.B2cQI_ideal[np.isnan(self.B2cQI_ideal)] = max_sub
+           
         self.B2cQI_ideal_spline = self.convert_to_spline(self.B2cQI_ideal, varphi = False)  # Make spline
         # Compute non-QI parts of B2: B20 should be even
         self.B20QI_deviation = self.B20_spline(self.phi) - self.B20_spline(2*np.pi/self.nfp-self.phi)   # B20(φ) = B20(-φ)

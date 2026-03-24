@@ -36,23 +36,39 @@ def plot(self, newfigure=True, show=True, savefig=None, plot_geo = False):
     else:
         f = plt.gcf()
         
-    if self.order == 'r1':
-        if self.omn:
-            nrows = 4
-            ncols = 6
-        else:
-            nrows = 3
-            ncols = 6
-    elif self.order == 'r2':
-        nrows = 5
-        ncols = 8
-        if self.omn:
-            nrows=6
-    elif self.order == 'r3':
-        nrows = 7
-        ncols = 8
-    else:
-        raise RuntimeError('Should not get here')
+
+    # Dynamically count the number of subplots needed
+    plot_count = 0
+    def count_subplot(*args, **kwargs):
+        nonlocal plot_count
+        plot_count += 1
+
+    # Simulate the plotting logic to count subplots
+    if not self.frenet and not self.no_cylindrical:
+        for _ in range(8): count_subplot()
+    if plot_geo and not self.no_cylindrical:
+        for _ in range(2): count_subplot()
+    for _ in range(12): count_subplot()  # curvature, torsion, sigma, B0, B1s, B1c, X1s, X1c, Y1c, Y1s, elongation, L_grad_B
+    count_subplot()  # 1/L_grad_B
+    if self.order != 'r1':
+        plot_count -= 2
+        for _ in range(18): count_subplot()  # L_grad_grad_B, 1/L_grad_grad_B, beta_1s, beta_1c, V1, V2, V3, X20, X2c, X2s, Y20, Y2c, Y2s, Z20, Z2c, Z2s, r_singularity
+    if self.omn:
+        for _ in range(2): count_subplot()  # alpha, alpha_no_buffer
+        if not self.frenet:
+            count_subplot()  # d_alpha_der
+            count_subplot()  # d_alpha_der_diff
+    if self.order != 'r1':
+        for _ in range(8): count_subplot()  # B20, B2cQI, B2sQI, B20QI_deviation, B2cQI_deviation, B2sQI_deviation, B2c, B2s
+    if self.omn:
+        for _ in range(2): count_subplot()  # d_over_curvature, gamma
+    if self.order != 'r1':
+        if self.order != 'r2':
+            for _ in range(4): count_subplot()  # X3c1, X3s1, Y3c1, Y3s1
+
+    # Compute grid size
+    ncols = 8
+    nrows = int(np.ceil(plot_count / ncols))
     jplot = 1
 
     def subplot(title, data=None, y0=False):
@@ -475,7 +491,7 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
             else:
                 label = '_nolegend_'
             if not flag_color:
-                color = next(ax._get_lines.prop_cycler)['color']
+                color = next(ax._get_lines.prop_cycler)['color'] if hasattr(ax._get_lines, 'prop_cycler') else 'C0'
 
             # Plot location of the axis
             if not legend_text is None:
@@ -996,7 +1012,7 @@ def plot_boundary_cartesians(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20
         else:
             label = '_nolegend_'
         if not flag_color:
-            color = next(ax._get_lines.prop_cycler)['color']
+            color = next(ax._get_lines.get_next_color())
 
         if plot_3d == True:
             # Plot poloidal cross-section

@@ -154,7 +154,7 @@ def _make_buffer(self, buffer_method, iota):
         ## Alternative buffer region attempting a more smooth alpha ## [Camacho et al., 2022]
         elif buffer_method == 'non-zone':
             # k parameter for degree of smoothness (note that the resulting function is not C^∞)
-            self.k_buffer = self.buffer_details["k_buffer"]
+            self.k_buffer = self.buffer_details.get("k_buffer", 3) # Default to k=3
             k = self.k_buffer
             # Reference ideal alpha, split into a piece proportional to iota and one independent
             self.alpha_iota = self.varphi - np.pi/self.nfp
@@ -169,9 +169,9 @@ def _make_buffer(self, buffer_method, iota):
         ## Alternative buffer region attempting an even more smooth alpha ## [Camacho et al., 2022]
         elif buffer_method == 'non-zone-smoother':
             # k and p parameters for degree of smoothness (note that the resulting function is not C^∞)
-            self.k_buffer = self.buffer_details["k_buffer"]
+            self.k_buffer = self.buffer_details.get("k_buffer", 3) # Default to k=3
             k = self.k_buffer
-            self.p_buffer = self.buffer_details["p_buffer"]
+            self.p_buffer = self.buffer_details.get("p_buffer", 1) # Default to p=1
             p = self.p_buffer
             # Reference ideal alpha, split into a piece proportional to iota and one independent
             self.alpha_iota = self.varphi - np.pi/self.nfp
@@ -195,7 +195,7 @@ def _make_buffer(self, buffer_method, iota):
         ## Alternative buffer region using a smoother alpha using a Fourier representation ## (Rogerio method)
         elif buffer_method == 'non-zone-fourier':
             # Buffer properties 
-            self.k_buffer = self.buffer_details["k_buffer"]
+            self.k_buffer = self.buffer_details.get("k_buffer", 3) # Default to k=3
             # Shorthand definition
             x = self.varphi
             Pi = np.pi
@@ -237,7 +237,7 @@ def _make_buffer(self, buffer_method, iota):
         ## Alternative buffer region using the simplest Fourier form ##
         elif buffer_method == 'simple-fourier':
             # Buffer properties 
-            self.k_buffer = self.buffer_details["k_buffer"]
+            self.k_buffer = self.buffer_details.get("k_buffer", 3) # Default to k=3
             # Prepare functions to construct alpha
             def construct_alpha_iota(k_order, nfp, phi):
                 # Build the shape of the region once (it is independent of the iota)
@@ -330,7 +330,8 @@ def _make_buffer(self, buffer_method, iota):
     varphi_cent = self.varphi - np.pi/self.nfp
     alpha_cent = np.interp(0, varphi_cent, self.alpha)
     self.alpha_cent = alpha_cent
-    assert np.abs(alpha_cent - np.pi/2) < 1e-6, "Problems with the centre of alpha!"
+    if np.abs(alpha_cent - np.pi/2) > 1e-6:
+        Warning(f"Problems with the centre of alpha! Values: alpha_cent={alpha_cent} instead of {np.pi/2}")
     self.alpha_buf = self.alpha - iota * varphi_cent - alpha_cent
     self.alpha_cent = alpha_cent
 

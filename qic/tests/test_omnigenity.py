@@ -23,7 +23,7 @@ class NewtonTests(unittest.TestCase):
         # delta   = 0.1 * 2*np.pi
         # nphi    = 151
         # stel = Qic(rc=rc,zs=zs, nfp=1, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta)
-        stel = Qic.from_paper("QI")
+        stel = Qic.from_paper(name = "QI")
         print('iota  =', stel.iota)
         print('max elongation  =', stel.max_elongation)
         print('mean elongation =', stel.mean_elongation)
@@ -79,42 +79,33 @@ class NewtonTests(unittest.TestCase):
         zs      = [ 0.0,0.0,-0.28721210154364263,0.0,0.08425262593215394,0.0,-0.010427621520053335,0.0,-0.0008921610906627226,0.0,-6.357200965811029e-07,0.0,2.7316247301500753e-07 ]
         rs      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
         zc      = [ 0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 ]
-        sigma0  =  0.0
         B0_vals = [ 1.0,0.15824229612567256 ]
-        omn_method ='non-zone'
-        k_buffer = 3
-        p_buffer = 2
-        k_second_order_SS   = 0.0
-        d_over_curvature   = 0.48654821249917474
-        d_svals = [ 0.0,-0.00023993050759319644,1.6644294162908823e-05,0.00012071143120099562,-1.1664837950174757e-05,-2.443821681789672e-05,2.0922298879435957e-06 ]
-        delta   = 0.1
-        nfp     = 1
-        B2s_svals = [ 0.0,0.27368018673599265,-0.20986698715787325,0.048031641735420336,0.07269565329289157,1.3981498114634812e-07,-9.952017662433159e-10 ]
-        B2c_cvals = [ -0.0007280714400220894,0.20739775852289746,0.05816363701644946,0.06465766308954603,0.006987357785313118,1.2229700694973357e-07,-3.057497440766065e-09,0.0 ]
-        B2s_cvals = [ 0.0,0.0,0.0,0.0,0.0 ]
-        B2c_svals = [ 0.0,0.0,0.0,0.0 ]
-        p2      =  0.0
-        nphi    =  301
-        stel    =  Qic(sigma0 = sigma0, omn_method = omn_method, p_buffer = p_buffer, k_buffer=k_buffer, rs=rs,zc=zc, rc=rc,zs=zs, nfp=nfp, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta, B2c_cvals=B2c_cvals, B2s_svals=B2s_svals, p2=p2, order='r3', k_second_order_SS=k_second_order_SS, d_over_curvature=d_over_curvature, B2s_cvals=B2s_cvals, B2c_svals=B2c_svals)
+
+        stel    =  Qic(
+            sigma0 = 0.0,
+            omn_buffer = {"omn_method": "non-zone", "k_buffer": 3, "p_buffer": 2, "delta": 0.1},
+            Raxis={"type": "fourier", "input_value": {"cos": rc, "sin": rs}},
+            Zaxis={"type": "fourier", "input_value": {"cos": zc, "sin": zs}},
+            nfp=1,
+            B0={"type": "fourier", "input_value": {"cos": B0_vals, "sin": []}},
+            d_over_curvature={"type": "fourier", "input_value": {"cos": [0.48654821249917474], \
+                                                                 "sin": [ 0.0,-0.00023993050759319644,1.6644294162908823e-05,0.00012071143120099562,-1.1664837950174757e-05,-2.443821681789672e-05,2.0922298879435957e-06 ]}},
+            nphi=301,
+            omn=True,
+            p2=0.0,
+            order='r3',
+            X2c={"type": "fourier", "input_value": {"cos": [ -0.0007280714400220894,0.20739775852289746,0.05816363701644946,0.06465766308954603,0.006987357785313118,1.2229700694973357e-07,-3.057497440766065e-09,0.0 ], \
+                                                    "sin": [ 0.0,0.0,0.0,0.0 ]}},
+            X2s={"type": "fourier", "input_value": {"cos": [ 0.0,0.0,0.0,0.0,0.0 ], \
+                                                    "sin": [ 0.0,0.27368018673599265,-0.20986698715787325,0.048031641735420336,0.07269565329289157 ]}},
+        )
         iota    =  -0.718394753879415
 
         print('iota  =', stel.iota)
         print('max elongation  =', stel.max_elongation)
         print('mean elongation =', stel.mean_elongation)
         print('N_helicity =', stel.N_helicity)
-        # stel.plot_axis()
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.plot(stel.alpha_notIota, label='alpha not iota')
-        # plt.legend()
-        # plt.figure()
-        # plt.plot(stel.alpha_iota, label='alpha iota')
-        # plt.legend()
-        # plt.figure()
-        # plt.plot(stel.alpha, label='alpha')
-        # plt.plot(stel.alpha_no_buffer, label='alpha no buffer')
-        # plt.legend()
-        # plt.show()
+
 
     def test_non_zone(self):
         rc      = [ 1.0, 0.0,-0.2 ]
@@ -123,7 +114,14 @@ class NewtonTests(unittest.TestCase):
         d_svals = [ 0.0, 1.08, 0.26, 0.46]
         delta   = 0.1 * 2*np.pi
         nphi    = 151
-        stel = Qic(omn_method = 'non-zone', rc=rc,zs=zs, nfp=1, B0_vals=B0_vals, d_svals=d_svals, nphi=nphi, omn=True, delta=delta)
+        stel = Qic(omn_buffer={"omn_method": "non-zone", "delta": delta}, 
+                   Raxis = {"type": "fourier", "input_value": {"cos": rc, "sin": []}},
+                    Zaxis = {"type": "fourier", "input_value": {"cos": [], "sin": zs}},
+                    nfp=1, 
+                    B0={"type": "fourier", "input_value": {"cos": B0_vals, "sin": []}}, 
+                    d = {"type": "fourier", "input_value": {"cos": [], "sin": d_svals}},
+                    nphi=nphi, 
+                    omn=True)
         print('iota  =', stel.iota)
         print('max elongation  =', stel.max_elongation)
         print('mean elongation =', stel.mean_elongation)

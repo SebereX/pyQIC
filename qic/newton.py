@@ -24,7 +24,7 @@ def newton(f, x0, jac, niter=60, tol=1e-18, nlinesearch=20):
     x = np.copy(x0)
     x_best = np.copy(x0)
     residual = f(x0)
-    initial_residual_norm = np.sqrt(np.sum(residual * residual))
+    initial_residual_norm = np.linalg.norm(residual * residual)
     residual_norm = initial_residual_norm
     logger.info('Beginning Newton method. residual {}'.format(residual_norm))
     newton_tolerance_achieved = False
