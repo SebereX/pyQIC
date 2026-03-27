@@ -116,6 +116,66 @@ def to_Fourier(R_2D, Z_2D, nfp, mpol, ntor, lasym):
 
     return RBC, RBS, ZBC, ZBS
 
+def to_Fourier_cartesian(X_2D, Y_2D, Z_2D, nfp, mpol, ntor, lasym):
+    """
+    This function takes three 2D arrays (X_2D, Y_2D, and Z_2D), which contain
+    the values of the Cartesian coordinates X, Y, and Z of a given surface and Fourier transform it, outputing
+    the resulting cos(theta) and sin(theta) Fourier coefficients
+
+    The first dimension of X_2D, Y_2D, and Z_2D should correspond to the
+    theta grid, while the second dimension should correspond to the
+    phi grid.
+
+    Args:
+        X_2D: 2D array of the X coordinate X(theta, phi) of a given surface
+        Y_2D: 2D array of the Y coordinate Y(theta, phi) of a given surface
+        Z_2D: 2D array of the Z coordinate Z(theta, phi) of a given surface
+        nfp: number of field periods of the surface
+        mpol: resolution in poloidal Fourier space
+        ntor: resolution in toroidal Fourier space
+        lasym: False if stellarator-symmetric, True if not
+    """
+    shape = np.array(X_2D).shape
+    ntheta = shape[0]
+    nphi_conversion = shape[1]
+    theta = np.linspace(0, 2 * np.pi, ntheta, endpoint=False)
+    phi_conversion = np.linspace(0, 2 * np.pi / nfp if nfp is not None else 2 * np.pi, nphi_conversion, endpoint=False)
+    XBC = np.zeros((int(2 * ntor + 1), int(mpol + 1)))
+    XBS = np.zeros((int(2 * ntor + 1), int(mpol + 1)))
+    YBC = np.zeros((int(2 * ntor + 1), int(mpol + 1)))
+    YBS = np.zeros((int(2 * ntor + 1), int(mpol + 1)))
+    ZBC = np.zeros((int(2 * ntor + 1), int(mpol + 1)))
+    ZBS = np.zeros((int(2 * ntor + 1), int(mpol + 1)))
+    factor = 2 / (ntheta * nphi_conversion)
+    phi2d, theta2d = np.meshgrid(phi_conversion, theta)
+    for m in range(mpol+1):
+        nmin = -ntor
+        if m==0: nmin = 1
+        for n in range(nmin, ntor+1):
+            angle = m * theta2d - n * nfp * phi2d if nfp is not None else m * theta2d - n * phi2d
+            sinangle = np.sin(angle)
+            cosangle = np.cos(angle)
+            factor2 = factor
+            # The next 2 lines ensure inverse Fourier transform(Fourier transform) = identity
+            if np.mod(ntheta,2) == 0 and m  == (ntheta/2): factor2 = factor2 / 2
+            if np.mod(nphi_conversion,2) == 0 and abs(n) == (nphi_conversion/2): factor2 = factor2 / 2
+            XBC[n + ntor, m] = np.sum(X_2D * cosangle * factor2)
+            XBS[n + ntor, m] = np.sum(X_2D * sinangle * factor2)
+            YBC[n + ntor, m] = np.sum(Y_2D * cosangle * factor2)
+            YBS[n + ntor, m] = np.sum(Y_2D * sinangle * factor2)
+            ZBC[n + ntor, m] = np.sum(Z_2D * cosangle * factor2)
+            ZBS[n + ntor, m] = np.sum(Z_2D * sinangle * factor2)
+    XBC[ntor,0] = np.sum(X_2D) / (ntheta * nphi_conversion)
+    YBC[ntor,0] = np.sum(Y_2D) / (ntheta * nphi_conversion)
+    ZBC[ntor,0] = np.sum(Z_2D) / (ntheta * nphi_conversion)
+
+    if not lasym:
+        XBS = 0
+        YBC = 0
+        ZBC = 0
+
+    return XBC, XBS, YBC, YBS, ZBC, ZBS
+
 def B_mag(self, r, theta, phi, Boozer_toroidal = False, B0=1):
     '''
     Function to calculate the modulus of the magnetic field B for a given
