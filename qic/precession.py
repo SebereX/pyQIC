@@ -4,7 +4,6 @@ This module contains the routine for computing the precession in QI configuratio
 
 import numpy as np
 from .util import mu0
-from BAD import bounce_int
 from matplotlib import rc
 import matplotlib.pyplot as plt
 from .fourier_interpolation import fourier_interpolation
@@ -135,6 +134,8 @@ def nae_geo(stel, r, alpha, gridpoints=1001):
     return varphi, jac_cheeky, B, BxdBdotdpsi, BxdBdotdalpha, Bmax, Bmin
 
 def drift_int(stel, varphi, B, BxdBdotdpsi, BxdBdotdalpha, Bmax_in = None, Bmin_in = None, N_k = 1000, verbose=0, alpha_array = [0.0], name = [], k_chib = False, scale_wa = False):
+    from BAD import bounce_int
+
     B_min = B.min()
     B_max = B.max()
     lam_array = 1/(np.linspace(0.001,1,N_k,endpoint = False) * (B_max-B_min) + B_min)
