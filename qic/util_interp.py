@@ -10,6 +10,20 @@ from scipy.interpolate import BSpline, make_interp_spline, PchipInterpolator
 
 logger = logging.getLogger(__name__)
 
+# --- Periodic spline wrapper ---
+class PeriodicSpline:
+    """
+    Wrapper for a periodic spline interpolant, that makes it pickable.
+    """
+    def __init__(self, sp_temp, period=2*np.pi):
+        self.sp_temp = sp_temp
+        self.period = period
+    def __call__(self, x):
+        if self.period is not None:
+            return self.sp_temp(np.mod(x, self.period))
+        else:
+            raise ValueError("PeriodicSpline called with period=None, but should be periodic")
+
 # Define periodic spline interpolant conversion used in several scripts and plotting
 def convert_to_spline(self, array, grid = None, varphi = False, periodic = True, half_period = False):
     """
@@ -30,7 +44,9 @@ def convert_to_spline(self, array, grid = None, varphi = False, periodic = True,
 
     # If input data is float, simply copy it down
     if isinstance(array, float) or isinstance(array, int):
-        sp=spline(np.append(domain,2*np.pi/self.nfp+domain[0]), np.ones(self.nphi + 1)*array, bc_type='periodic')
+        sp = spline(np.append(domain,2*np.pi/self.nfp+domain[0]), np.ones(self.nphi + 1)*array, bc_type='periodic')
+        return sp
+    
     # Interpolation taking into account that the function is periodic
     elif periodic:
         # If defined on the field period
@@ -52,7 +68,7 @@ def convert_to_spline(self, array, grid = None, varphi = False, periodic = True,
                     array_ext = np.concatenate(tuple(array*sgn_half**j for j in range(-1,self.nfp+1,1)))
             # Spline
             sp_temp = make_interp_spline(domain_ext, array_ext, k=7, axis=0)
-            sp = lambda x: sp_temp(x % (2*np.pi))    
+            return PeriodicSpline(sp_temp, period=2*np.pi)
         else:
             if flag_closed:
                 domain_ext = domain
@@ -65,10 +81,10 @@ def convert_to_spline(self, array, grid = None, varphi = False, periodic = True,
                 bc_type = 'periodic'
             sp_temp = make_interp_spline(domain_ext, array_ext, k=7, axis=0, bc_type = bc_type)
             period = 2*np.pi/self.nfp if domain_extent == 1 else 2*np.pi
-            sp = lambda x: sp_temp(x % (period)) 
+            return PeriodicSpline(sp_temp, period=period)
     else:
-        sp = make_interp_spline(domain, array, k = 7)
-    return sp
+        sp_temp = make_interp_spline(domain, array, k = 7)
+        return sp_temp
 
 ## THINK ALSO OF THE USE IN INPUT INTERPOLATION ##
 

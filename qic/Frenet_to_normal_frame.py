@@ -10,7 +10,7 @@ from pathos.multiprocessing import ProcessingPool as Pool
 from tqdm import tqdm
 
   
-def Frenet_to_normal_frame(self, r, mpol=15, ntor = 15, parallel = True, return_theta_phi = False):
+def Frenet_to_normal_frame(self, r, ntheta=20, nphi = None, theta = None, varphi = None, parallel = True, return_theta_phi = False, verbose = False):
     """
     Function to convert the near-axis coordinate system to
     one purely normal to the axis: X'(theta,phi),
@@ -24,21 +24,35 @@ def Frenet_to_normal_frame(self, r, mpol=15, ntor = 15, parallel = True, return_
         r:  near-axis radius r of the desired boundary surface
         ntheta: resolution in the poloidal angle theta
     """
-    if return_theta_phi:
-        if parallel:
-            X_2D, Y_2D, phi0_2D, phi_2D, (theta, phi_conversion) = Frenet_to_normal_frame_parallel(self, r, mpol = mpol, ntor = ntor, return_theta_phi = return_theta_phi)
-        else:
-            X_2D, Y_2D, phi0_2D, phi_2D, (theta, phi_conversion) = Frenet_to_normal_frame_no_parallel(self, r, mpol = mpol, ntor = ntor, return_theta_phi = return_theta_phi)
-        return X_2D, Y_2D, phi0_2D, phi_2D, (theta, phi_conversion)
-    
+    # Phi grid
+    if varphi is not None:
+        phi_conversion = varphi
+        nphi_conversion = len(varphi)
+    elif nphi is None:
+        nphi_conversion = self.nphi
+        phi_conversion = np.linspace(0, 2*np.pi/self.nfp, nphi_conversion, endpoint=False)
     else:
-        if parallel:
-            X_2D, Y_2D, phi0_2D, phi_2D = Frenet_to_normal_frame_parallel(self, r, mpol = mpol, ntor = ntor, return_theta_phi= return_theta_phi)
-        else:
-            X_2D, Y_2D, phi0_2D, phi_2D = Frenet_to_normal_frame_no_parallel(self, r, mpol = mpol, ntor = ntor, return_theta_phi= return_theta_phi)  
+        nphi_conversion = nphi
+        phi_conversion = np.linspace(0, 2*np.pi/self.nfp, nphi_conversion, endpoint=False)
+
+    # Theta grid
+    if theta is not None:
+        ntheta = len(theta)
+    else:
+        theta = np.linspace(0, 2*np.pi, ntheta, endpoint=False)
+
+
+    if parallel:
+        X_2D, Y_2D, phi0_2D, phi_2D = Frenet_to_normal_frame_parallel(self, r, theta = theta, phi_conversion = phi_conversion, verbose=verbose)
+    else:
+        X_2D, Y_2D, phi0_2D, phi_2D = Frenet_to_normal_frame_no_parallel(self, r, theta = theta, phi_conversion = phi_conversion, verbose=verbose)
+
+    if return_theta_phi:
+        return X_2D, Y_2D, phi0_2D, phi_2D, (theta, phi_conversion)
+    else:
         return X_2D, Y_2D, phi0_2D, phi_2D
 
-def Frenet_to_normal_frame_parallel(self, r, mpol = 15, ntor = 15, return_theta_phi = False):
+def Frenet_to_normal_frame_parallel(self, r, theta, phi_conversion, verbose=False):
     """
     Function to convert the near-axis coordinate system to
     a cylindrical one for a surface at a particular radius,
@@ -49,7 +63,8 @@ def Frenet_to_normal_frame_parallel(self, r, mpol = 15, ntor = 15, return_theta_
 
     Args:
         r:  near-axis radius r of the desired boundary surface
-        ntheta: resolution in the poloidal angle theta
+        theta: array of poloidal angles
+        phi_conversion: array of toroidal angles for conversion
     """
     #########
     # GRIDS #
@@ -58,16 +73,10 @@ def Frenet_to_normal_frame_parallel(self, r, mpol = 15, ntor = 15, return_theta_
     gs = 0.5
     
     # Grid dimensions
-    N_theta = 2 * mpol + 1
-    N_phi_conversion = 2 * ntor + 1
+    N_theta = len(theta)
+    N_phi_conversion = len(phi_conversion)
     nfp = self.nfp
     
-    # Theta grid
-    theta = np.linspace(0, 2 * np.pi, N_theta, endpoint=False) + (gs * 2 * np.pi) / N_theta
-
-    # Phi grid for boundary
-    phi_conversion = np.linspace(0, 2 * np.pi / nfp, N_phi_conversion, endpoint=False) + (gs * 2 * np.pi) / N_phi_conversion
-
     #############################
     # EXTRACT ATTRIBUTES NEEDED #
     #############################
@@ -344,7 +353,7 @@ def Frenet_to_normal_frame_parallel(self, r, mpol = 15, ntor = 15, return_theta_
         n_process = os.cpu_count()
         with Pool(processes = n_process) as pool:
             # Create a tqdm progress bar
-            with tqdm(total=N_theta, desc="Processing theta", ncols=100) as pbar:
+            with tqdm(total=N_theta, desc="Processing theta", ncols=100, disable=not verbose) as pbar:
                 # Start processing the tasks
                 results = []
                 for result in pool.imap(process_theta, range(N_theta)):
@@ -360,13 +369,11 @@ def Frenet_to_normal_frame_parallel(self, r, mpol = 15, ntor = 15, return_theta_
         X_2D[j_theta, :] = X_row
         Y_2D[j_theta, :] = Y_row
         phi0_2D[j_theta, :] = phi0_row
+
     # Phi coordinate matrix
     phi_2D = np.vstack([phi_conversion]*N_theta)
 
-    if return_theta_phi:
-        return X_2D, Y_2D, phi0_2D, phi_2D, (theta, phi_conversion)
-    else:
-        return X_2D, Y_2D, phi0_2D, phi_2D
+    return X_2D, Y_2D, phi0_2D, phi_2D
 
 def Frenet_to_normal_frame_residual_func(phi0, phi_target, qic, X_spline, Y_spline, Z_spline):
     """
@@ -489,7 +496,7 @@ def Frenet_to_normal_frame_1_point(phi0, phi, qic, X_spline, Y_spline, Z_spline)
 
     return total_X, total_Y, phi
     
-def Frenet_to_normal_frame_no_parallel(self, r, mpol=20, ntor=20, return_theta_phi = False):
+def Frenet_to_normal_frame_no_parallel(self, r, theta, phi_conversion, verbose=False):
     """
     Function to convert the near-axis coordinate system to
     a cylindrical one for a surface at a particular radius,
@@ -500,24 +507,16 @@ def Frenet_to_normal_frame_no_parallel(self, r, mpol=20, ntor=20, return_theta_p
 
     Args:
         r:  near-axis radius r of the desired boundary surface
-        ntheta: resolution in the poloidal angle theta
+        theta: array of poloidal angles
+        phi_conversion: array of toroidal angles for conversion
     """
     #########
     # GRIDS #
     #########
-    # Grid shift factor
-    gs = 0.5
-    
     # Grid dimensions
-    N_theta = 2 * mpol + 1
-    N_phi_conversion = 2 * ntor + 1
+    N_theta = len(theta)
+    N_phi_conversion = len(phi_conversion)
     nfp = self.nfp
-    
-    # Theta grid
-    theta = np.linspace(0, 2 * np.pi, N_theta, endpoint=False) + (gs * 2 * np.pi) / N_theta
-
-    # Phi grid for boundary
-    phi_conversion = np.linspace(0, 2 * np.pi / nfp, N_phi_conversion, endpoint=False) + (gs * 2 * np.pi) / N_phi_conversion
 
     #############################
     # EXTRACT ATTRIBUTES NEEDED #
@@ -525,7 +524,7 @@ def Frenet_to_normal_frame_no_parallel(self, r, mpol=20, ntor=20, return_theta_p
     X_2D = np.zeros((N_theta,N_phi_conversion))
     Y_2D = np.zeros((N_theta,N_phi_conversion))
     phi0_2D = np.zeros((N_theta,N_phi_conversion))
-    with tqdm(desc = 'Computing different theta...', total = N_theta) as pbar:
+    with tqdm(desc = 'Computing different theta...', total = N_theta, disable=not verbose) as pbar:
         for j_theta in range(N_theta):
             costheta = np.cos(theta[j_theta])
             sintheta = np.sin(theta[j_theta])
@@ -596,8 +595,5 @@ def Frenet_to_normal_frame_no_parallel(self, r, mpol=20, ntor=20, return_theta_p
     
     phi_2D = np.vstack([phi_conversion]*N_theta)
             
-    if return_theta_phi:
-        return X_2D, Y_2D, phi0_2D, phi_2D, (theta, phi_conversion)
-    else:
-        return X_2D, Y_2D, phi0_2D, phi_2D
+    return X_2D, Y_2D, phi0_2D, phi_2D
    

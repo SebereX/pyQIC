@@ -35,7 +35,7 @@ class Qic():
     from .omnigeneity import compute_eps_eff, compute_eps_eff_anal, omn_reshape
     from .plot import plot, get_boundary, get_boundary_cartesians, B_fieldline, B_contour, plot_axis
     from .r_singularity import calculate_r_singularity, calculate_r_singularity_opt
-    from .plot import plot, plot_boundary, get_boundary, plot_boundary_cartesians, get_boundary_cartesians, B_fieldline, B_contour, plot_axis, B_densityplot, plot_3d, plot_and_crop_config_3D_nice
+    from .plot import plot, plot_boundary, get_boundary, plot_boundary_cartesians, get_boundary_cartesians, B_fieldline, B_contour, plot_axis, B_densityplot, plot_3d, plot_and_crop_config_3D_nice, get_boundary_shape
     from .fourier_interpolation import fourier_interpolation
     from .Frenet_to_cylindrical import Frenet_to_cylindrical, to_RZ
     from .Frenet_to_normal_frame import Frenet_to_normal_frame, Frenet_to_normal_frame_no_parallel

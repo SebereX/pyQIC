@@ -368,6 +368,7 @@ def get_boundary(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, n
     '''
     # Get surface shape at fixed off-axis toroidal angle phi
     R_2D, Z_2D, _ = self.Frenet_to_cylindrical(r, ntheta=ntheta_fourier, parallel = parallel)
+
     # Get Fourier coefficients in order to plot with arbitrary resolution
     RBC, RBS, ZBC, ZBS = to_Fourier(R_2D, Z_2D, self.nfp, mpol=mpol, ntor=ntor, lasym=self.lasym)
     if not self.lasym:
@@ -395,6 +396,76 @@ def get_boundary(self, r=0.1, ntheta=40, nphi=130, ntheta_fourier=20, mpol=13, n
     z_2D_plot = Z_2Dnew
 
     return x_2D_plot, y_2D_plot, z_2D_plot, R_2Dnew
+
+def get_boundary_shape(self, r=0.1, coordinates = "RZ", ntheta=40, nphi=130, theta = None, phi = None, parallel = True, verbose = False):
+    '''
+    Function that, for a given near-axis radial coordinate r, outputs
+    the shape of the boundary in one of the following coordinate systems: 
+     - Frenet-Serret (X,Y) with phi parametrising the axis
+     - cylindrical (R,Z) with phi parametrising the cylindrical angle on boundary
+     - Cartesian (X,Y,Z) with phi parametrising the axis
+
+    Parameters
+    ----------
+    r : float
+        Near-axis radius r where to create the surface.
+    coordinates : str
+        Coordinate system to use for the output shape. Must be one of "RZ", "FS", or "cartesian".
+    ntheta : int
+        Number of grid points to plot in the poloidal angle.
+    nphi : int
+        Number of grid points to plot in the toroidal angle.
+    theta : array-like, optional
+        Array of poloidal angles to use for the grid. If None, a uniform grid will be created based on ntheta.
+    phi : array-like, optional
+        Array of toroidal angles to use for the grid. If None, a uniform grid will be created based on nphi. For the "RZ" coordinate system, phi will always be interpreted as the cylindrical angle on the boundary, and not as the Boozer toroidal angle parametrising the axis.
+    parallel : bool, optional
+        Whether to use parallel processing for the coordinate transformations. Default is True.
+    verbose : bool, optional
+        Whether to print progress information during the coordinate transformations. Default is False.
+
+    Returns
+    -------
+    x_2D_plot : ndarray
+        X coordinates of the boundary in the FS frame.
+    y_2D_plot : ndarray
+        Y coordinates of the boundary in the FS frame.
+    z_2D_plot : ndarray
+        Z coordinates of the boundary in the FS frame.
+    R_2Dnew : ndarray
+        Radial coordinates of the boundary in the FS frame.
+    '''
+    # Phi grid
+    if phi is not None:
+        phi = phi
+        nphi = len(phi)
+    elif nphi is None:
+        nphi = self.nphi
+        phi = np.linspace(0, 2*np.pi/self.nfp, nphi, endpoint=False)
+    else:
+        nphi = nphi
+        phi = np.linspace(0, 2*np.pi/self.nfp, nphi, endpoint=False)
+
+    # Theta grid
+    if theta is not None:
+        ntheta = len(theta)
+    else:
+        theta = np.linspace(0, 2*np.pi, ntheta, endpoint=False)
+
+    if coordinates == "RZ":
+        # Get surface shape at fixed toroidal angle on axis phi
+        R_2D, Z_2D, _ = self.Frenet_to_cylindrical(r, theta = theta, phi = phi, parallel = parallel, verbose = verbose)
+        return R_2D, Z_2D
+    elif coordinates == "cartesian":
+        # Get surface shape in cartesian coordinates
+        x_2D_plot, y_2D_plot, z_2D_plot, _, _ = self.get_boundary_cartesians(r=r, theta = theta, varphi = phi, parallel=parallel, verbose=verbose)
+        return x_2D_plot, y_2D_plot, z_2D_plot
+    elif coordinates == "FS":
+        # Get surface shape in FS normal coordinates
+        X_2D, Y_2D, _, _ = self.Frenet_to_normal_frame(r, theta=theta, varphi=phi, parallel = parallel, verbose = verbose)
+        return X_2D, Y_2D
+    else:
+        raise ValueError("Invalid coordinate system specified. Must be one of 'RZ', 'FS', or 'cartesian'.")
 
 def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections=8, mpol=13, ntor=25,
          fieldlines=False, savefig=None, colormap=None, azim_default=None, plot_3d=True, n_field_lines=1,
@@ -622,7 +693,7 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
                 plt.show()
         return ax
 
-def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, parallel=True, xsec = True, field_period = False, theta = None, varphi=None, verbose = False):
+def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, field_period = False, theta = None, varphi=None, verbose = False, parallel=False, xsec = False):
     '''
     Function that, for a given near-axis radial coordinate r, outputs
     the [X,Y,Z] components of the boundary using the cartesian coords. The resolution along the toroidal
@@ -637,10 +708,6 @@ def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, parallel=True, xse
         Number of grid points to plot in the poloidal angle.
     nphi : int
         Number of grid points to plot in the toroidal angle.
-    parallel : bool
-        Whether to use parallel computation.
-    xsec : bool
-        Whether to also compute the cross-section in the Frenet-Serret (X,Y) plane.
     field_period : bool, optional
         Whether to consider one field period or the whole toroidal domain. If True, the toroidal angle will be defined in the range [0, 2*pi/nfp] instead of [0, 2*pi].
     theta : array-like, optional
@@ -649,6 +716,11 @@ def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, parallel=True, xse
         Array of toroidal angles to use. If None, a default array will be created in the range [0, 2*pi] or [0, 2*pi/nfp] depending on the field_period parameter.
     verbose : bool, optional
         Whether to print verbose output during computation.
+    parallel : bool, deprecated option, optional
+        Whether to use parallel computation (only leads to speed-up if xsec=True and ntheta is large).
+    xsec : bool, deprecated option, optional
+        Deprecated option. Best to run get_boundary_normal(). 
+
     
     Returns
     -------
@@ -681,275 +753,83 @@ def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, parallel=True, xse
     Y_fs_2D = np.zeros((ntheta, nphi))
     Z_2D = np.zeros((ntheta, nphi))
 
-    if not parallel:
-        with tqdm(desc='Computing different theta...', total=ntheta, disable=not verbose) as pbar:
-            for j_theta in range(ntheta):
-                costheta = np.cos(theta[j_theta])
-                sintheta = np.sin(theta[j_theta])
-                X_at_this_theta = r * (self.X1c_untwisted * costheta + self.X1s_untwisted * sintheta)
-                Y_at_this_theta = r * (self.Y1c_untwisted * costheta + self.Y1s_untwisted * sintheta)
-                Z_at_this_theta = 0 * X_at_this_theta
-                if self.order != 'r1':
-                    # We need O(r^2) terms:
-                    cos2theta = np.cos(2 * theta[j_theta])
-                    sin2theta = np.sin(2 * theta[j_theta])
-                    X_at_this_theta += r * r * (self.X20_untwisted + self.X2c_untwisted * cos2theta + self.X2s_untwisted * sin2theta)
-                    Y_at_this_theta += r * r * (self.Y20_untwisted + self.Y2c_untwisted * cos2theta + self.Y2s_untwisted * sin2theta)
-                    Z_at_this_theta += r * r * (self.Z20_untwisted + self.Z2c_untwisted * cos2theta + self.Z2s_untwisted * sin2theta)
-                    if self.order == 'r3':
-                        # We need O(r^3) terms:
-                        costheta = np.cos(theta[j_theta])
-                        sintheta = np.sin(theta[j_theta])
-                        cos3theta = np.cos(3 * theta[j_theta])
-                        sin3theta = np.sin(3 * theta[j_theta])
-                        r3 = r * r * r
-                        X_at_this_theta += r3 * (self.X3c1_untwisted * costheta + self.X3s1_untwisted * sintheta
-                                                + self.X3c3_untwisted * cos3theta + self.X3s3_untwisted * sin3theta)
-                        Y_at_this_theta += r3 * (self.Y3c1_untwisted * costheta + self.Y3s1_untwisted * sintheta
-                                                + self.Y3c3_untwisted * cos3theta + self.Y3s3_untwisted * sin3theta)
-                        Z_at_this_theta += r3 * (self.Z3c1_untwisted * costheta + self.Z3s1_untwisted * sintheta
-                                                + self.Z3c3_untwisted * cos3theta + self.Z3s3_untwisted * sin3theta)
-                        
-                # If half helicity axes are considered, we need to use the extended domain : 
-                # within the 2*pi domain of the axis everything is smooth (as is the signed frame)
-                # but not across phi = 0
-                X_spline = self.convert_to_spline(X_at_this_theta, half_period=self.flag_half, varphi=True)
-                Y_spline = self.convert_to_spline(Y_at_this_theta, half_period=self.flag_half, varphi=True)
-                Z_spline = self.convert_to_spline(Z_at_this_theta, varphi=True)
-        
-                X_cart_sp = lambda p: self.x0_cart_spline(p) + X_spline(p) * self.normal_x_cart_spline(p) + \
-                                                                Y_spline(p) * self.binormal_x_cart_spline(p) + \
-                                                                Z_spline(p) * self.tangent_x_cart_spline(p)
-                X_2D[j_theta, :] = X_cart_sp(varphi)
-                
-                Y_cart_sp = lambda p: self.y0_cart_spline(p) + X_spline(p) * self.normal_y_cart_spline(p) + \
-                                                                Y_spline(p) * self.binormal_y_cart_spline(p) + \
-                                                                Z_spline(p) * self.tangent_y_cart_spline(p)
-                Y_2D[j_theta, :] = Y_cart_sp(varphi)
-                
-                Z_cart_sp = lambda p: self.z0_cart_spline(p) + X_spline(p) * self.normal_z_cart_spline(p) + \
-                                                                Y_spline(p) * self.binormal_z_cart_spline(p) + \
-                                                                Z_spline(p) * self.tangent_z_cart_spline(p)
-                Z_2D[j_theta, :] = Z_cart_sp(varphi)
-
-                if xsec:
-                    # Find the cross-section normal to the axis
-                    axis_point = np.array([self.x0_cart_spline(varphi), self.y0_cart_spline(varphi), self.z0_cart_spline(varphi)])
-                    fdot = lambda ph: np.einsum('ij,ij->j', np.array([X_cart_sp(ph), Y_cart_sp(ph), Z_cart_sp(ph)]) - axis_point, \
-                        np.array([self.tangent_x_cart_spline(varphi), self.tangent_y_cart_spline(varphi), self.tangent_z_cart_spline(varphi)]))
-                    root = fsolve(fdot, varphi)
-
-                    # Project to X,Y locally
-                    pos = np.array([X_cart_sp(root), Y_cart_sp(root), Z_cart_sp(root)])
-                    normal = np.array([self.normal_x_cart_spline(varphi), self.normal_y_cart_spline(varphi), self.normal_z_cart_spline(varphi)])
-                    X_proj = np.einsum('ij,ij->j', pos - axis_point, normal)
-                    binormal = np.array([self.binormal_x_cart_spline(varphi), self.binormal_y_cart_spline(varphi), self.binormal_z_cart_spline(varphi)])
-                    Y_proj = np.einsum('ij,ij->j', pos - axis_point, binormal)
-                                                            
-                    # X_fs_2D[j_theta, :] = X_spline(varphi)
-                    
-                    # Y_fs_2D[j_theta, :] = Y_spline(varphi)
-
-                    X_fs_2D[j_theta, :] = X_proj
-                    
-                    Y_fs_2D[j_theta, :] = Y_proj
-
-                pbar.update(1)
-    else:
-        # Defining the attributes
-        order = self.order
-        flag_half = self.flag_half
-
-        # Real space geometry
-        normal_x_cart_spline = self.normal_x_cart_spline
-        normal_y_cart_spline = self.normal_y_cart_spline
-        normal_z_cart_spline = self.normal_z_cart_spline
-
-        binormal_x_cart_spline = self.binormal_x_cart_spline
-        binormal_y_cart_spline = self.binormal_y_cart_spline
-        binormal_z_cart_spline = self.binormal_z_cart_spline
-
-        tangent_x_cart_spline = self.tangent_x_cart_spline
-        tangent_y_cart_spline = self.tangent_y_cart_spline
-        tangent_z_cart_spline = self.tangent_z_cart_spline
-
-        x0_cart_spline = self.x0_cart_spline
-        y0_cart_spline = self.y0_cart_spline
-        z0_cart_spline = self.z0_cart_spline
-
-        # Frenet-Serret space
-        X1c_untwisted = self.X1c_untwisted
-        X1s_untwisted = self.X1s_untwisted
-        Y1c_untwisted = self.Y1c_untwisted
-        Y1s_untwisted = self.Y1s_untwisted
-        if order != 'r1':
-            # We need O(r^2) terms:
-            X20_untwisted = self.X20_untwisted
-            X2c_untwisted = self.X2c_untwisted
-            X2s_untwisted = self.X2s_untwisted
-            Y20_untwisted = self.Y20_untwisted
-            Y2c_untwisted = self.Y2c_untwisted
-            Y2s_untwisted = self.Y2s_untwisted
-            Z20_untwisted = self.Z20_untwisted
-            Z2c_untwisted = self.Z2c_untwisted
-            Z2s_untwisted = self.Z2s_untwisted
-            if self.order == 'r3':
-                # We need O(r^3) terms:
-                X3c1_untwisted = self.X3c1_untwisted
-                X3s1_untwisted = self.X3s1_untwisted
-                X3c3_untwisted = self.X3c3_untwisted
-                X3s3_untwisted = self.X3s3_untwisted
-                Y3c1_untwisted = self.Y3c1_untwisted
-                Y3s1_untwisted = self.Y3s1_untwisted
-                Y3c3_untwisted = self.Y3c3_untwisted
-                Y3s3_untwisted = self.Y3s3_untwisted
-                Z3c1_untwisted = self.Z3c1_untwisted
-                Z3s1_untwisted = self.Z3s1_untwisted
-                Z3c3_untwisted = self.Z3c3_untwisted
-                Z3s3_untwisted = self.Z3s3_untwisted
-
-
-        # Define the splining function
-        convert_to_spline = self.convert_to_spline
-
-        def residual_calculation(phi0, varphi, x0_cart_spline, y0_cart_spline, z0_cart_spline,
-                                    normal_x_cart_spline, normal_y_cart_spline, normal_z_cart_spline,
-                                    binormal_x_cart_spline, binormal_y_cart_spline, binormal_z_cart_spline,
-                                    tangent_x_cart_spline, tangent_y_cart_spline, tangent_z_cart_spline,
-                                X_spline, Y_spline, Z_spline):
-            """
-            Residual function with explicit arguments instead of self/qic.
-            """
-            axis_point = np.array([x0_cart_spline(varphi), y0_cart_spline(varphi), z0_cart_spline(varphi)])
-
-            X_cart = x0_cart_spline(phi0) + X_spline(phi0) * normal_x_cart_spline(phi0) + \
-                                                    Y_spline(phi0) * binormal_x_cart_spline(phi0) + \
-                                                    Z_spline(phi0) * tangent_x_cart_spline(phi0)
-                            
-            Y_cart = y0_cart_spline(phi0) + X_spline(phi0) * normal_y_cart_spline(phi0) + \
-                                                        Y_spline(phi0) * binormal_y_cart_spline(phi0) + \
-                                                        Z_spline(phi0) * tangent_y_cart_spline(phi0)
-            
-            Z_cart = z0_cart_spline(phi0) + X_spline(phi0) * normal_z_cart_spline(phi0) + \
-                                                        Y_spline(phi0) * binormal_z_cart_spline(phi0) + \
-                                                        Z_spline(phi0) * tangent_z_cart_spline(phi0)
-            
-            axis_point = np.array([x0_cart_spline(varphi), y0_cart_spline(varphi), z0_cart_spline(varphi)])
-
-            fdot = np.einsum('ij,ij->j', np.array([X_cart, Y_cart, Z_cart]) - axis_point, \
-                np.array([tangent_x_cart_spline(varphi), tangent_y_cart_spline(varphi), tangent_z_cart_spline(varphi)]))
-
-            return fdot
-        
-        def evaluate_func_par(root, varphi, x0_cart_spline, y0_cart_spline, z0_cart_spline,
-                                    normal_x_cart_spline, normal_y_cart_spline, normal_z_cart_spline,
-                                    binormal_x_cart_spline, binormal_y_cart_spline, binormal_z_cart_spline,
-                                    tangent_x_cart_spline, tangent_y_cart_spline, tangent_z_cart_spline,
-                                    X_spline, Y_spline, Z_spline):
-            """
-            Residual function with explicit arguments instead of self/qic.
-            """
-            axis_point = np.array([x0_cart_spline(varphi), y0_cart_spline(varphi), z0_cart_spline(varphi)])
-
-            # Project to X,Y locally
-            X_pos = x0_cart_spline(root) + X_spline(root) * normal_x_cart_spline(root) + \
-                                                        Y_spline(root) * binormal_x_cart_spline(root) + \
-                                                        Z_spline(root) * tangent_x_cart_spline(root)            
-            Y_pos = y0_cart_spline(root) + X_spline(root) * normal_y_cart_spline(root) + \
-                                                        Y_spline(root) * binormal_y_cart_spline(root) + \
-                                                        Z_spline(root) * tangent_y_cart_spline(root)            
-            Z_pos = z0_cart_spline(root) + X_spline(root) * normal_z_cart_spline(root) + \
-                                                        Y_spline(root) * binormal_z_cart_spline(root) + \
-                                                        Z_spline(root) * tangent_z_cart_spline(root)
-
-            pos = np.array([X_pos, Y_pos, Z_pos])
-            normal = np.array([normal_x_cart_spline(varphi), normal_y_cart_spline(varphi), normal_z_cart_spline(varphi)])
-            X_proj = np.einsum('ij,ij->j', pos - axis_point, normal)
-            binormal = np.array([binormal_x_cart_spline(varphi), binormal_y_cart_spline(varphi), binormal_z_cart_spline(varphi)])
-            Y_proj = np.einsum('ij,ij->j', pos - axis_point, binormal)
-
-            return X_proj, Y_proj
-
-        def worker(j_theta):
+    with tqdm(desc='Computing different theta...', total=ntheta, disable=not verbose) as pbar:
+        for j_theta in range(ntheta):
             costheta = np.cos(theta[j_theta])
             sintheta = np.sin(theta[j_theta])
-            X_at_this_theta = r * (X1c_untwisted * costheta + X1s_untwisted * sintheta)
-            Y_at_this_theta = r * (Y1c_untwisted * costheta + Y1s_untwisted * sintheta)
+            X_at_this_theta = r * (self.X1c_untwisted * costheta + self.X1s_untwisted * sintheta)
+            Y_at_this_theta = r * (self.Y1c_untwisted * costheta + self.Y1s_untwisted * sintheta)
             Z_at_this_theta = 0 * X_at_this_theta
-            if order != 'r1':
+            if self.order != 'r1':
                 # We need O(r^2) terms:
                 cos2theta = np.cos(2 * theta[j_theta])
                 sin2theta = np.sin(2 * theta[j_theta])
-                X_at_this_theta += r * r * (X20_untwisted + X2c_untwisted * cos2theta + X2s_untwisted * sin2theta)
-                Y_at_this_theta += r * r * (Y20_untwisted + Y2c_untwisted * cos2theta + Y2s_untwisted * sin2theta)
-                Z_at_this_theta += r * r * (Z20_untwisted + Z2c_untwisted * cos2theta + Z2s_untwisted * sin2theta)
-                if order == 'r3':
+                X_at_this_theta += r * r * (self.X20_untwisted + self.X2c_untwisted * cos2theta + self.X2s_untwisted * sin2theta)
+                Y_at_this_theta += r * r * (self.Y20_untwisted + self.Y2c_untwisted * cos2theta + self.Y2s_untwisted * sin2theta)
+                Z_at_this_theta += r * r * (self.Z20_untwisted + self.Z2c_untwisted * cos2theta + self.Z2s_untwisted * sin2theta)
+                if self.order == 'r3':
                     # We need O(r^3) terms:
-                    costheta  = np.cos(theta[j_theta])
-                    sintheta  = np.sin(theta[j_theta])
+                    costheta = np.cos(theta[j_theta])
+                    sintheta = np.sin(theta[j_theta])
                     cos3theta = np.cos(3 * theta[j_theta])
                     sin3theta = np.sin(3 * theta[j_theta])
                     r3 = r * r * r
-                    X_at_this_theta += r3 * (X3c1_untwisted * costheta + X3s1_untwisted * sintheta
-                                            + X3c3_untwisted * cos3theta + X3s3_untwisted * sin3theta)
-                    Y_at_this_theta += r3 * (Y3c1_untwisted * costheta + Y3s1_untwisted * sintheta
-                                            + Y3c3_untwisted * cos3theta + Y3s3_untwisted * sin3theta)
-                    Z_at_this_theta += r3 * (Z3c1_untwisted * costheta + Z3s1_untwisted * sintheta
-                                            + Z3c3_untwisted * cos3theta + Z3s3_untwisted * sin3theta)
-                        
+                    X_at_this_theta += r3 * (self.X3c1_untwisted * costheta + self.X3s1_untwisted * sintheta
+                                            + self.X3c3_untwisted * cos3theta + self.X3s3_untwisted * sin3theta)
+                    Y_at_this_theta += r3 * (self.Y3c1_untwisted * costheta + self.Y3s1_untwisted * sintheta
+                                            + self.Y3c3_untwisted * cos3theta + self.Y3s3_untwisted * sin3theta)
+                    Z_at_this_theta += r3 * (self.Z3c1_untwisted * costheta + self.Z3s1_untwisted * sintheta
+                                            + self.Z3c3_untwisted * cos3theta + self.Z3s3_untwisted * sin3theta)
+                    
             # If half helicity axes are considered, we need to use the extended domain : 
             # within the 2*pi domain of the axis everything is smooth (as is the signed frame)
             # but not across phi = 0
-            X_spline = convert_to_spline(X_at_this_theta, half_period = flag_half, varphi = True)
-            Y_spline = convert_to_spline(Y_at_this_theta, half_period = flag_half, varphi = True)
-            Z_spline = convert_to_spline(Z_at_this_theta, varphi = True)
+            X_spline = self.convert_to_spline(X_at_this_theta, half_period=self.flag_half, varphi=True)
+            Y_spline = self.convert_to_spline(Y_at_this_theta, half_period=self.flag_half, varphi=True)
+            Z_spline = self.convert_to_spline(Z_at_this_theta, varphi=True)
+    
+            X_cart_sp = lambda p: self.x0_cart_spline(p) + X_spline(p) * self.normal_x_cart_spline(p) + \
+                                                            Y_spline(p) * self.binormal_x_cart_spline(p) + \
+                                                            Z_spline(p) * self.tangent_x_cart_spline(p)
+            X_2D[j_theta, :] = X_cart_sp(varphi)
+            
+            Y_cart_sp = lambda p: self.y0_cart_spline(p) + X_spline(p) * self.normal_y_cart_spline(p) + \
+                                                            Y_spline(p) * self.binormal_y_cart_spline(p) + \
+                                                            Z_spline(p) * self.tangent_y_cart_spline(p)
+            Y_2D[j_theta, :] = Y_cart_sp(varphi)
+            
+            Z_cart_sp = lambda p: self.z0_cart_spline(p) + X_spline(p) * self.normal_z_cart_spline(p) + \
+                                                            Y_spline(p) * self.binormal_z_cart_spline(p) + \
+                                                            Z_spline(p) * self.tangent_z_cart_spline(p)
+            Z_2D[j_theta, :] = Z_cart_sp(varphi)
 
-            X_2D_j = x0_cart_spline(varphi) + X_spline(varphi) * normal_x_cart_spline(varphi) + \
-                                                        Y_spline(varphi) * binormal_x_cart_spline(varphi) + \
-                                                        Z_spline(varphi) * tangent_x_cart_spline(varphi)            
-            Y_2D_j = y0_cart_spline(varphi) + X_spline(varphi) * normal_y_cart_spline(varphi) + \
-                                                        Y_spline(varphi) * binormal_y_cart_spline(varphi) + \
-                                                        Z_spline(varphi) * tangent_y_cart_spline(varphi)            
-            Z_2D_j = z0_cart_spline(varphi) + X_spline(varphi) * normal_z_cart_spline(varphi) + \
-                                                        Y_spline(varphi) * binormal_z_cart_spline(varphi) + \
-                                                        Z_spline(varphi) * tangent_z_cart_spline(varphi)
+            pbar.update(1)
 
-            # Find the cross-section normal to the axis
-            root = fsolve(residual_calculation, varphi, args = (varphi, x0_cart_spline, y0_cart_spline, z0_cart_spline,
-                                      normal_x_cart_spline, normal_y_cart_spline, normal_z_cart_spline,
-                                      binormal_x_cart_spline, binormal_y_cart_spline, binormal_z_cart_spline,
-                                      tangent_x_cart_spline, tangent_y_cart_spline, tangent_z_cart_spline,
-                                    X_spline, Y_spline, Z_spline))
+    if xsec:
+        print("xsec option is deprecated. Best to run get_boundary_normal() or get_boundary_shape(coordinates = 'FS').")
+        #     # Find the cross-section normal to the axis
+        #     axis_point = np.array([self.x0_cart_spline(varphi), self.y0_cart_spline(varphi), self.z0_cart_spline(varphi)])
+        #     fdot = lambda ph: np.einsum('ij,ij->j', np.array([X_cart_sp(ph), Y_cart_sp(ph), Z_cart_sp(ph)]) - axis_point, \
+        #         np.array([self.tangent_x_cart_spline(varphi), self.tangent_y_cart_spline(varphi), self.tangent_z_cart_spline(varphi)]))
+        #     root = fsolve(fdot, varphi)
 
-            # Project to X,Y locally
-            X_proj, Y_proj = evaluate_func_par(root, varphi, x0_cart_spline, y0_cart_spline, z0_cart_spline,
-                                      normal_x_cart_spline, normal_y_cart_spline, normal_z_cart_spline,
-                                      binormal_x_cart_spline, binormal_y_cart_spline, binormal_z_cart_spline,
-                                      tangent_x_cart_spline, tangent_y_cart_spline, tangent_z_cart_spline,
-                                    X_spline, Y_spline, Z_spline)
-                                                        
-            return j_theta, X_2D_j, Y_2D_j, Z_2D_j, X_proj, Y_proj
-        
-        # Use ThreadPoolExecutor for parallel processing
-        with Manager() as manager:
-            progress_queue = manager.Queue()
+        #     # Project to X,Y locally
+        #     pos = np.array([X_cart_sp(root), Y_cart_sp(root), Z_cart_sp(root)])
+        #     normal = np.array([self.normal_x_cart_spline(varphi), self.normal_y_cart_spline(varphi), self.normal_z_cart_spline(varphi)])
+        #     X_proj = np.einsum('ij,ij->j', pos - axis_point, normal)
+        #     binormal = np.array([self.binormal_x_cart_spline(varphi), self.binormal_y_cart_spline(varphi), self.binormal_z_cart_spline(varphi)])
+        #     Y_proj = np.einsum('ij,ij->j', pos - axis_point, binormal)
+                                                    
+        #     # X_fs_2D[j_theta, :] = X_spline(varphi)
+            
+        #     # Y_fs_2D[j_theta, :] = Y_spline(varphi)
 
-            # Define a processing pool
-            n_process = os.cpu_count()
-            with Pool(processes = n_process) as pool:
-                # Create a tqdm progress bar
-                with tqdm(total=ntheta, desc="Processing theta", ncols=100) as pbar:
-                    # Start processing the tasks
-                    results = []
-                    for result in pool.imap(worker, range(ntheta)):
-                        # Each time a task completes, update the progress bar
-                        results.append(result)  # Collect the result
-                        pbar.update(1)
+        #     X_fs_2D[j_theta, :] = X_proj
+            
+        #     Y_fs_2D[j_theta, :] = Y_proj
 
-        for j_theta, X_2D_j, Y_2D_j, Z_2D_j, X_proj, Y_proj in results:
-            X_2D[j_theta, :], Y_2D[j_theta, :], Z_2D[j_theta, :], X_fs_2D[j_theta, :], Y_fs_2D[j_theta, :] = X_2D_j, Y_2D_j, Z_2D_j, X_proj, Y_proj
 
-    return X_2D, Y_2D, Z_2D, X_fs_2D, Y_fs_2D
+    return X_2D, Y_2D, Z_2D, None, None
     
 def plot_boundary_cartesians(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections=8, mpol=13, ntor=25,
          fieldlines=False, savefig=None, colormap=None, azim_default=None, plot_3d=True, n_field_lines=1,

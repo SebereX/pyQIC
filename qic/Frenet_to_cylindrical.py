@@ -10,7 +10,7 @@ from pathos.multiprocessing import ProcessingPool as Pool
 from tqdm import tqdm
 
   
-def Frenet_to_cylindrical(self, r, ntheta=20, parallel = True):
+def Frenet_to_cylindrical(self, r, ntheta=20, nphi = None, theta = None, phi = None, parallel = True, verbose = False):
     """
     Function to convert the near-axis coordinate system to
     a cylindrical one for a surface at a particular radius,
@@ -19,18 +19,57 @@ def Frenet_to_cylindrical(self, r, ntheta=20, parallel = True):
     coordinates and theta Boozer coordinate and phi0 the 
     cylindrical coordinate on axis.
 
-    Args:
-        r:  near-axis radius r of the desired boundary surface
-        ntheta: resolution in the poloidal angle theta
+    Parameters
+    ----------
+        r : float
+            Near-axis radius r of the desired boundary surface
+        ntheta : int
+            Resolution in the poloidal angle theta
+        nphi : int
+            Resolution in the toroidal angle phi
+        theta : array-like
+            Array of poloidal angles. If None, will be set to a uniform grid with ntheta points.
+        phi : array-like
+            Array of toroidal angles. If None, will be set to a uniform grid with nphi points.
+        parallel : bool
+            Whether to use parallel processing for the conversion. Default is True.
+        verbose : bool
+            Whether to display progress bars and additional information. Default is False.
+    Returns
+    -------
+        R_2D : 2D array
+            Radial coordinate R(theta, phi) of the surface in cylindrical coordinates
+        Z_2D : 2D array
+            Vertical coordinate Z(theta, phi) of the surface in cylindrical coordinates
+        phi0_2D : 2D array
+            Toroidal angle on the axis corresponding to each (theta, phi) point
     """
-    if parallel:
-        R_2D, Z_2D, phi0_2D = Frenet_to_cylindrical_parallel(self, r, ntheta)
+    # Phi grid
+    if phi is not None:
+        phi_conversion = phi
+        nphi_conversion = len(phi)
+    elif nphi is None:
+        nphi_conversion = self.nphi
+        phi_conversion = np.linspace(0, 2*np.pi/self.nfp, nphi_conversion, endpoint=False)
     else:
-        R_2D, Z_2D, phi0_2D = Frenet_to_cylindrical_no_parallel(self, r, ntheta)
+        nphi_conversion = nphi
+        phi_conversion = np.linspace(0, 2*np.pi/self.nfp, nphi_conversion, endpoint=False)
+
+    # Theta grid
+    if theta is not None:
+        ntheta = len(theta)
+    else:
+        theta = np.linspace(0, 2*np.pi, ntheta, endpoint=False)
+
+    # Get surface shape at fixed off-axis toroidal angle phi
+    if parallel:
+        R_2D, Z_2D, phi0_2D = Frenet_to_cylindrical_parallel(self, r, theta=theta, phi_conversion=phi_conversion, verbose=verbose)
+    else:
+        R_2D, Z_2D, phi0_2D = Frenet_to_cylindrical_no_parallel(self, r, theta=theta, phi_conversion=phi_conversion, verbose=verbose)
             
     return R_2D, Z_2D, phi0_2D
 
-def Frenet_to_cylindrical_parallel(self, r, ntheta=20):
+def Frenet_to_cylindrical_parallel(self, r, theta, phi_conversion, verbose=False):
     """
     Function to convert the near-axis coordinate system to
     a cylindrical one for a surface at a particular radius,
@@ -41,13 +80,15 @@ def Frenet_to_cylindrical_parallel(self, r, ntheta=20):
 
     Args:
         r:  near-axis radius r of the desired boundary surface
-        ntheta: resolution in the poloidal angle theta
+        theta: array of poloidal angles
+        phi_conversion: array of toroidal angles for conversion
+        verbose: bool
+            Whether to display progress bars and additional information. Default is False.
     """
-    nphi_conversion = self.nphi
+    ntheta = len(theta)
+    nphi_conversion = len(phi_conversion)
     nfp = self.nfp
 
-    theta = np.linspace(0,2*np.pi,ntheta,endpoint=False)
-    phi_conversion = np.linspace(0,2*np.pi/self.nfp,nphi_conversion,endpoint=False)
     R_2D = np.zeros((ntheta,nphi_conversion))
     Z_2D = np.zeros((ntheta,nphi_conversion))
     phi0_2D = np.zeros((ntheta,nphi_conversion))
@@ -277,7 +318,7 @@ def Frenet_to_cylindrical_parallel(self, r, ntheta=20):
         n_process = os.cpu_count()
         with Pool(processes = n_process) as pool:
             # Create a tqdm progress bar
-            with tqdm(total=ntheta, desc="Processing theta", ncols=100) as pbar:
+            with tqdm(total=ntheta, desc="Processing theta", ncols=100, disable=not verbose) as pbar:
                 # Start processing the tasks
                 results = []
                 for result in pool.imap(process_theta, range(ntheta)):
@@ -392,7 +433,7 @@ def Frenet_to_cylindrical_1_point(phi0, qic, X_spline, Y_spline, Z_spline):
 
     return total_R, total_z, total_phi
     
-def Frenet_to_cylindrical_no_parallel(self, r, ntheta=20):
+def Frenet_to_cylindrical_no_parallel(self, r, theta, phi_conversion, verbose=False):
     """
     Function to convert the near-axis coordinate system to
     a cylindrical one for a surface at a particular radius,
@@ -403,15 +444,18 @@ def Frenet_to_cylindrical_no_parallel(self, r, ntheta=20):
 
     Args:
         r:  near-axis radius r of the desired boundary surface
-        ntheta: resolution in the poloidal angle theta
+        theta: array of poloidal angles
+        phi_conversion: array of toroidal angles for conversion
+        verbose: bool
+            Whether to display progress bars and additional information. Default is False.
     """
-    nphi_conversion = self.nphi
-    theta = np.linspace(0,2*np.pi,ntheta,endpoint=False)
-    phi_conversion = np.linspace(0,2*np.pi/self.nfp,nphi_conversion,endpoint=False)
+    ntheta = len(theta)
+    nphi_conversion = len(phi_conversion)
+
     R_2D = np.zeros((ntheta,nphi_conversion))
     Z_2D = np.zeros((ntheta,nphi_conversion))
     phi0_2D = np.zeros((ntheta,nphi_conversion))
-    with tqdm(desc = 'Computing different theta...', total = ntheta) as pbar:
+    with tqdm(desc = 'Computing different theta...', total = ntheta, disable=not verbose) as pbar:
         for j_theta in range(ntheta):
             costheta = np.cos(theta[j_theta])
             sintheta = np.sin(theta[j_theta])
