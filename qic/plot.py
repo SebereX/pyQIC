@@ -622,26 +622,59 @@ def plot_boundary(self, r=0.1, ntheta=80, nphi=150, ntheta_fourier=20, nsections
                 plt.show()
         return ax
 
-def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, parallel=True, xsec = True, GVEC_style = False, verbose = False, field_period = False):
+def get_boundary_cartesians(self, r=0.1, ntheta=40, nphi=130, parallel=True, xsec = True, field_period = False, theta = None, varphi=None, verbose = False):
     '''
     Function that, for a given near-axis radial coordinate r, outputs
     the [X,Y,Z] components of the boundary using the cartesian coords. The resolution along the toroidal
     angle phi is equal to the resolution nphi for the axis, while ntheta
     is specified by the used.
 
-    Args:
-      r (float): near-axis radius r where to create the surface
-      ntheta (int): Number of grid points to plot in the poloidal angle.
-      nphi   (int): Number of grid points to plot in the toroidal angle.
+    Parameters
+    ----------
+    r : float
+        near-axis radius r where to create the surface
+    ntheta : int
+        Number of grid points to plot in the poloidal angle.
+    nphi : int
+        Number of grid points to plot in the toroidal angle.
+    parallel : bool
+        Whether to use parallel computation.
+    xsec : bool
+        Whether to also compute the cross-section in the Frenet-Serret (X,Y) plane.
+    field_period : bool, optional
+        Whether to consider one field period or the whole toroidal domain. If True, the toroidal angle will be defined in the range [0, 2*pi/nfp] instead of [0, 2*pi].
+    theta : array-like, optional
+        Array of poloidal angles to use. If None, a default array will be created in the range [0, 2*pi].
+    varphi : array-like, optional
+        Array of toroidal angles to use. If None, a default array will be created in the range [0, 2*pi] or [0, 2*pi/nfp] depending on the field_period parameter.
+    verbose : bool, optional
+        Whether to print verbose output during computation.
+    
+    Returns
+    -------
+    X_2D : 2D array
+        2D array for the x components of the surface (ntheta, nphi)
+    Y_2D : 2D array
+        2D array for the y components of the surface (ntheta, nphi)
+    Z_2D : 2D array
+        2D array for the z components of the surface (ntheta, nphi)
+    X_fs_2D : 2D array
+        2D array for the x components of the surface in the Frenet-Serret frame (ntheta, nphi)
+    Y_fs_2D : 2D array
+        2D array for the y components of the surface in the Frenet-Serret frame (ntheta, nphi)
     '''
     if self.nfp > 1 and verbose: print('Should be used only for N=1')
+
     # Get surface shape parametrised by phi (on-axis) and theta
-    if GVEC_style:
-        theta = np.linspace(0, 2 * np.pi, ntheta, endpoint=False)
-        varphi = -np.linspace(0, 2 * np.pi/self.nfp if field_period else 2 * np.pi, nphi, endpoint=False)
-    else:
+    if theta is None:
         theta = np.linspace(0, 2 * np.pi, ntheta, endpoint=True)
+    else:
+        ntheta = len(theta)
+    if varphi is None:
         varphi = np.linspace(0, 2 * np.pi/self.nfp if field_period else 2 * np.pi, nphi, endpoint=True)
+    else:
+        nphi = len(varphi)
+
     X_2D = np.zeros((ntheta, nphi))
     Y_2D = np.zeros((ntheta, nphi))
     X_fs_2D = np.zeros((ntheta, nphi))
