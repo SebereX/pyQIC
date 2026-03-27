@@ -1,10 +1,27 @@
-numpy==2.3.5
-scipy==1.17.0
-matplotlib==3.10.8
-tqdm==4.67.3
-netCDF4==1.7.4
-ijson==3.4.0.post0
-scikit-learn==1.8.0
+
+# Core scientific stack
+numpy>=2
+scipy>=1
+matplotlib>=3.10
+tqdm>=4
+netCDF4>=1.7
+ijson>=3
+scikit-learn>=1.8
+numba>=0.60
+
+# Plotting and visualization
 mplcursors==0.7
 plotly==6.5.2
 Pillow==12.1.0
+
+# Additional dependencies
+pathos
+mpi4py
+
+# Standard library modules (for reference, not installable via pip)
+# os, datetime, logging, contextlib, multiprocessing, math, cmath, subprocess
+
+# External codes (manual installation may be required)
+# BAD
+# qsc
+# booz-xform

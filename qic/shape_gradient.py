@@ -3,11 +3,6 @@ This module contains the routines for computing shape gradients of 2nd order fea
 """
 
 import numpy as np
-from .util import mu0
-from BAD import bounce_int
-from matplotlib import rc
-import matplotlib.pyplot as plt
-from .fourier_interpolation import fourier_interpolation
 
 def compute_L_F_matrices(stel, Y_mat = None, check = False):
     """

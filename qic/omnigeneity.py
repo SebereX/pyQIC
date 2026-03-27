@@ -7,7 +7,6 @@ from matplotlib import rc
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.integrate as integ
-from BAD import bounce_int
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import PchipInterpolator
 from .optimize_nae import min_geo_qi_consistency
@@ -33,6 +32,8 @@ def compute_eps_eff(stel, order = 'r0', N_lam = 100, plot = False, info = None, 
     Returns:
         Value of ε_eff^(3/2) (for 0th and 1st order if 'r1') for the given stellarator object.
     """
+    from BAD import bounce_int
+
     if order == 'r0':
         # Compute the leading order contribution to the ripple : constant offset
         ####################
@@ -633,6 +634,8 @@ def compute_eps_eff_anal(stel, r = 0.1, alpha = 0.0, N_lam = 100, verbose = Fals
     Returns:
         Value of ε_eff^(3/2) at the given radial position and poloidal angle.
     """
+    from BAD import bounce_int
+
     ####################
     # FIELD QUANTITIES #
     ####################
