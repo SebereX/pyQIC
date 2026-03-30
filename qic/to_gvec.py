@@ -35,8 +35,6 @@ def to_gvec(
         number of poloidal points to evaluate the pyQIC surface, default is ``41``
     nzeta : int, optional
         number of toroidal points per field period to evaluate the pyQIC surface, default is ``81``
-    loglevel : Literal["WARNING", "INFO", "DEBUG"] | None, optional
-        Set the loglevel for the gvec logger. Default is ``"INFO"``
     outpath : str, optional
         output path for the files. Will be overwritten if existing. Should have a meaningful name, default is ``"pyQIC_to_gframe"``
     output_prefix: str, optional
@@ -44,6 +42,8 @@ def to_gvec(
     kwargs_gframe: dict, optional
         additional parameters passed to the ``gvec.gframe.construct_gframe_from_surface`` function.
         Default keyword arguments set tolerances and enforce stellarator symmetry.
+    verbose: bool, optional
+        if True, print additional information during the gframe construction, default is False.
 
     Return
     ------
@@ -115,7 +115,7 @@ def to_gvec(
             )
         logger.info(f"pyQIC surface data file written to {outpath / (output_prefix+'_xyz_surface.nc')}")
 
-        dict_params,dict_gframe=gvec.gframe.construct_gframe_from_surface(
+        dict_params, dict_gframe = gvec.gframe.construct_gframe_from_surface(
             xyz,
             stel.nfp, 
             output_prefix,
@@ -140,7 +140,7 @@ def plot_cross_sections_gframe(dict_gframe, n_cross_sections=7, tolerance = 1e-5
         number of cross sections to plot, default is 7
     tolerance : float, optional
         tolerance for the gframe construction, default is 1e-5.
-        
+
     Returns 
     -------
     fig : matplotlib.figure.Figure
