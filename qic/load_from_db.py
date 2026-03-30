@@ -1,9 +1,9 @@
 """
 Scripts to load QI configs from the database.
 """
-
 import ijson
 import numpy as np
+from pathlib import Path
 import scipy.integrate as integrate
 from scipy.integrate import cumulative_trapezoid as cumtrapz
 from scipy.interpolate import make_interp_spline
@@ -15,17 +15,17 @@ class Struct():
 _DATA_FOLDER_PATH = "/home/../mnt/d/Research/Stellerator/Datsshare_sync/DB/Paper_scripts/"
 
 @classmethod
-def from_db(cls, name, **kwargs):
+def from_db(cls, name, db_path = _DATA_FOLDER_PATH, **kwargs):
     """
     Load a configuration from the built-in database of configurations.
     """
-    kwargs = load_config_from_db(name, **kwargs)
+    kwargs = load_config_from_db(name, db_path=db_path, **kwargs)
     return cls(**kwargs)
 
 ##################
 # DATABASE FILES #
 ##################
-def load_config_from_db(config_name, no_alpha = False, solve_geo = True, **kwargs):
+def load_config_from_db(config_name, db_path = _DATA_FOLDER_PATH, no_alpha = False, solve_geo = True, **kwargs):
     """
     Load a specific configuration from database providing the config name and construct the corresponding QIC object. The config name should be in the format "Nx_xxx_xxx", where N is the number of field periods, and xxx are the identifiers for the database file and configuration ID.
 
@@ -33,6 +33,8 @@ def load_config_from_db(config_name, no_alpha = False, solve_geo = True, **kwarg
     ----------
         config_name: str
             The name of the configuration, in the format "Nx_xxx_xxx".
+        db_path: str, optional
+            The path to the database files. Default is _DATA_FOLDER_PATH.
         no_alpha: bool, optional
             Whether to use the alpha_tilde input or resolve for it. Default is False.
         solve_geo: bool, optional
@@ -46,20 +48,22 @@ def load_config_from_db(config_name, no_alpha = False, solve_geo = True, **kwarg
             QIC class object corresponding to the loaded configuration.
     """
     # Undo the config name to obtain the nfp, db_file and config_id
-    _, db_file, config_id = undo_config_name(config_name)
+    _, db_file, config_id = undo_config_name(config_name, path_header=db_path)
 
     # Load the configuration from the database file and construct the QIC object
     props_stel = load_config_id_file_from_db(db_file, config_id, no_alpha = no_alpha, solve_geo = solve_geo, **kwargs)
 
     return props_stel
 
-def undo_config_name(config_name, path_header = "/home/IPP-HGW/rodre/Documents/qi_database/"):
+def undo_config_name(config_name, path_header = _DATA_FOLDER_PATH):
     """
     Undo a config name to obtain the nfp, db_file and config_id.
     Parameters
     ----------
     config_name : str
         The name of the configuration, in the format "Nx_xxx_xxx".
+    path_header : str, optional
+        The path header for the database files. Default is "/home/IPP-HGW/rodre/Documents/qi_database/".
 
     Returns
     -------
@@ -101,9 +105,9 @@ def load_config_id_file_from_db(db_file, config_id, verbose = False, no_alpha = 
         stel_qic: QIC class object.
             QIC class object corresponding to the loaded configuration.
     """
-    # Repath file if necessary
-    if "IPP-HGW" in db_file:
-        db_file = repath_file(db_file)
+    # Check if the file exists
+    if not Path(db_file).is_file():
+        raise FileNotFoundError(f"The database file {db_file} does not exist. May have to use the correct _DATA_FOLDER_PATH or check the config name and undo_config_name function.")
 
     # Open the file and parse it incrementally
     with open(db_file, 'rb') as file:
@@ -128,7 +132,7 @@ def load_config_id_file_from_db(db_file, config_id, verbose = False, no_alpha = 
                              **kwargs)
     return props_stel
 
-def repath_file(file_path):
+def repath_file(file_path, new_base_path=_DATA_FOLDER_PATH):
     """
     Repath file from processed database to original database, new address. It will change the path 
     /home/IPP-HGW/rodre/Documents/qi_database/data/...
@@ -143,9 +147,8 @@ def repath_file(file_path):
     new_file_path : str
         The repathed file path.
     """
-    # Define the old and new base paths
+    # Define the old path
     old_base_path = "/home/IPP-HGW/rodre/Documents/qi_database/"
-    new_base_path = _DATA_FOLDER_PATH
 
     # Replace the old base path with the new base path
     if file_path.startswith(old_base_path):
