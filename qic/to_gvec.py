@@ -20,6 +20,8 @@ def to_gvec(
         atol_field_periodicity=1e-5,
         cutoff_gframe=15,
         ),
+    mpol = None,
+    ntor = None,
     verbose: bool = False
     ):
     """
@@ -42,6 +44,10 @@ def to_gvec(
     kwargs_gframe: dict, optional
         additional parameters passed to the ``gvec.gframe.construct_gframe_from_surface`` function.
         Default keyword arguments set tolerances and enforce stellarator symmetry.
+    mpol : int, optional
+        maximum poloidal mode number for the gframe output. Default is None, which means the mode number is chosen to meet the default gframe tolerances.
+    ntor : int, optional
+        maximum toroidal mode number for the gframe output. Default is None, which means the mode number is chosen to meet the default gframe tolerances.
     verbose: bool, optional
         if True, print additional information during the gframe construction, default is False.
 
@@ -79,7 +85,7 @@ def to_gvec(
     list_handler.setFormatter(formatter)
     logger.addHandler(list_handler)
 
-    # get the surface in Cartesian coordinates
+    # Get the surface in Cartesian coordinates
     theta = np.linspace(0,2*np.pi,ntheta,endpoint=False) 
     varphi = np.linspace(0,2*np.pi,nzeta*stel.nfp,endpoint=False) 
     X_2D, Y_2D, Z_2D, _, _ = stel.get_boundary_cartesians(
@@ -89,7 +95,7 @@ def to_gvec(
         )
     
     if stel.nfp==1:
-        #rotate by pi/2 around z-axis, for stellarator-symmetry definition in GVEC (xhat~cos, yhat~sin,z~sin)
+        # Rotate by pi/2 around z-axis, for stellarator-symmetry definition in GVEC (xhat~cos, yhat~sin,z~sin)
         X_2D, Y_2D = -Y_2D,X_2D
     
     # Put surface data into array of shape (ntheta, nzeta, 3) for gvec
@@ -125,7 +131,44 @@ def to_gvec(
             logger=logger,
             **kwargs_gframe
             )
-    
+        
+        ## Further modify the toml parameters file as needed ##
+
+        # Adjust mpol and ntor mode numbers
+        if mpol is not None and mpol < dict_params['X1_mn_max'][0]:
+            dict_params['X1_mn_max'][0] = mpol
+            dict_params['X2_mn_max'][0] = mpol
+            dict_params['LA_mn_max'][0] = mpol
+
+        if ntor is not None and ntor < dict_params['X1_mn_max'][1]:
+            dict_params['X1_mn_max'][1] = ntor
+            dict_params['X2_mn_max'][1] = ntor
+            dict_params['LA_mn_max'][1] = ntor
+        
+        # Toroidal current profile over normalized toroidal flux s=rho^2
+        mu0 = 4 * np.pi * 1e-7
+        curtor = 2 * np.pi / mu0 * stel.I2 * r * r
+        dict_params["I_tor"] = {
+            "type": "polynomial",
+            "coefs": [0.0,1.0], # Itor(s) = scale*(coef0 +coef1*s)
+            "scale": curtor, # total toroidal current, in Ampere
+        }
+
+        # Pressure profile over normalized toroidal fluxs=rho^2
+        pscale = - stel.p2 * r * r
+        dict_params["pres"] = {
+            "type": "polynomial",
+            "coefs": [1.0,-1.0], # p(s) = scale*(coef0 +coef1*s)
+            "scale": pscale,    # pscale should be positive, in pascal
+        }
+
+        # Set toroidal flux
+        dict_params["phiedge"] = np.pi * r * r * stel.spsi * stel.Bbar
+
+        # Save into toml file
+        from gvec.util import write_parameters
+        write_parameters(dict_params, f"{dict_params['ProjectName']}-parameters.toml")
+
     return dict_params,dict_gframe
 
 def plot_cross_sections_gframe(dict_gframe, n_cross_sections=7, tolerance = 1e-5):
