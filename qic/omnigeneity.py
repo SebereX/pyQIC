@@ -103,13 +103,13 @@ def compute_eps_eff(stel, order = 'r0', N_lam = 100, plot = False, info = None, 
         # INTEGRAL OVER λ #
         ###################
         # Compute integral over λ
-        integ_lambda = integ.trapz(integrand_lambda * lam_array, lam_array)
+        integ_lambda = integ.trapezoid(integrand_lambda * lam_array, lam_array)
 
         ############################
         # COMPUTE GEOMETRIC FACTOR #
         ############################
         # # G_hat needs to be computed
-        # G_hat_sq = integ.trapz(X1c**2+X1s**2+Y1c**2+Y1s**2, varphi)
+        # G_hat_sq = integ.trapezoid(X1c**2+X1s**2+Y1c**2+Y1s**2, varphi)
 
         ## More precise argument may be found without approximating the |nabla psi| piece
         # Define the averaging
@@ -121,10 +121,10 @@ def compute_eps_eff(stel, order = 'r0', N_lam = 100, plot = False, info = None, 
             # Compute integral over phi and alpha (and normalise the alpha part by 2π)
             nablapsi_chi = lambda chi: np.sqrt((X1c*np.sin(chi) - X1s*np.cos(chi))**2 + \
                             (Y1c*np.sin(chi) - Y1s*np.cos(chi))**2)
-            G_hat_num = np.sum([integ.trapz(nablapsi_chi(chi)/B0, varphi) for chi in chi_grid])/N_chi
+            G_hat_num = np.sum([integ.trapezoid(nablapsi_chi(chi)/B0, varphi) for chi in chi_grid])/N_chi
             
             # Normalisation flux average
-            norm = np.trapz(1/B0/B0, varphi)
+            norm = np.trapezoid(1/B0/B0, varphi)
 
             # Put together
             G_hat_sq_num = G_hat_num**2/norm
@@ -453,8 +453,8 @@ def compute_eps_eff(stel, order = 'r0', N_lam = 100, plot = False, info = None, 
         # INTEGRAL OVER λ #
         ###################
         # Compute integral over λ
-        integ_lambda_1 = integ.trapz(E_1 * lam_array, lam_array)
-        integ_lambda_2 = integ.trapz(E_2 * lam_array, lam_array)
+        integ_lambda_1 = integ.trapezoid(E_1 * lam_array, lam_array)
+        integ_lambda_2 = integ.trapezoid(E_2 * lam_array, lam_array)
 
         # Save information about the integrand of ε_eff per λ. May be used externally for analysis
         if not info is None:
@@ -475,7 +475,7 @@ def compute_eps_eff(stel, order = 'r0', N_lam = 100, plot = False, info = None, 
             ref_R_Bbar = G0
 
         # # G_hat needs to be computed
-        # G_hat_sq = integ.trapz(X1c**2+X1s**2+Y1c**2+Y1s**2, varphi)
+        # G_hat_sq = integ.trapezoid(X1c**2+X1s**2+Y1c**2+Y1s**2, varphi)
 
         ## More precise argument may be found without approximating the |nabla psi| piece
         # Define the averaging
@@ -494,10 +494,10 @@ def compute_eps_eff(stel, order = 'r0', N_lam = 100, plot = False, info = None, 
             # Compute integral over phi and alpha (and normalise the alpha part by 2π)
             nablapsi_chi = lambda chi: np.sqrt((X1c*np.sin(chi) - X1s*np.cos(chi))**2 + \
                             (Y1c*np.sin(chi) - Y1s*np.cos(chi))**2)
-            G_hat_num = np.sum([integ.trapz(nablapsi_chi(chi)/B0, varphi) for chi in chi_grid])/N_chi
+            G_hat_num = np.sum([integ.trapezoid(nablapsi_chi(chi)/B0, varphi) for chi in chi_grid])/N_chi
             
             # Normalisation flux average
-            norm = np.trapz(1/B0/B0, varphi)
+            norm = np.trapezoid(1/B0/B0, varphi)
 
             # Put together
             G_hat_sq_num = G_hat_num**2/norm
@@ -546,15 +546,15 @@ def compute_eps_eff(stel, order = 'r0', N_lam = 100, plot = False, info = None, 
                 T3 = lambda chi: 0.5*P3(chi)/np.sqrt(P1(chi))-0.125*P2(chi)**2/P1(chi)**1.5
 
                 # D integral : D = ∫ (|nabla psi|/B^2) dφ
-                D1 = np.sum([integ.trapz(T1(chi)/B0, varphi) for chi in chi_grid])/N_chi
-                D2 = np.sum([integ.trapz(T2(chi)/B0 - 2*T1(chi)*B1n(chi)/B0**2, varphi) for chi in chi_grid])/N_chi # we expect it to vanish?
-                D3 = np.sum([integ.trapz(T3(chi)/B0 - 2*T2(chi)*B1n(chi)/B0**2 + T1(chi)/B0*(3*B1n(chi)**2/B0**2-2*B2n(chi)/B0), varphi)\
+                D1 = np.sum([integ.trapezoid(T1(chi)/B0, varphi) for chi in chi_grid])/N_chi
+                D2 = np.sum([integ.trapezoid(T2(chi)/B0 - 2*T1(chi)*B1n(chi)/B0**2, varphi) for chi in chi_grid])/N_chi # we expect it to vanish?
+                D3 = np.sum([integ.trapezoid(T3(chi)/B0 - 2*T2(chi)*B1n(chi)/B0**2 + T1(chi)/B0*(3*B1n(chi)**2/B0**2-2*B2n(chi)/B0), varphi)\
                             for chi in chi_grid])/N_chi
                 
                 # Normalisation : L = ∫ (1/B^2) dφ
-                L0 = np.trapz(1/B0/B0, varphi) # Leading order normalisation like before
+                L0 = np.trapezoid(1/B0/B0, varphi) # Leading order normalisation like before
                 # L1 vanishes due to parity upon flux surface integration
-                L2 = np.sum([integ.trapz(1/B0**2*(3*B1n(chi)**2/B0**2-2*B2n(chi)/B0), varphi) for chi in chi_grid])/N_chi
+                L2 = np.sum([integ.trapezoid(1/B0**2*(3*B1n(chi)**2/B0**2-2*B2n(chi)/B0), varphi) for chi in chi_grid])/N_chi
 
                 # Function F = L/(2D**2) which is the inverse of G_hat_sq (note we do not have the G0 factor in front by definition)
                 F0 = L0/2/D1**2
@@ -599,9 +599,9 @@ def compute_eps_eff(stel, order = 'r0', N_lam = 100, plot = False, info = None, 
             E_all["E_2_I"] = E_2_I * fac_eps_eff * lam_array
             E_all["E_2"] = E_2 * fac_eps_eff * lam_array
             E_all["lambda"] = lam_array
-            E_all["eps_eff_3_2_r2_drift"] = integ.trapz(E_2_drift * lam_array, lam_array) * fac_eps_eff
-            E_all["eps_eff_3_2_r2_resonant"] = integ.trapz(E_2_resonant * lam_array, lam_array) * fac_eps_eff
-            E_all["eps_eff_3_2_r2_I"] = integ.trapz(E_2_I * lam_array, lam_array) * fac_eps_eff
+            E_all["eps_eff_3_2_r2_drift"] = integ.trapezoid(E_2_drift * lam_array, lam_array) * fac_eps_eff
+            E_all["eps_eff_3_2_r2_resonant"] = integ.trapezoid(E_2_resonant * lam_array, lam_array) * fac_eps_eff
+            E_all["eps_eff_3_2_r2_I"] = integ.trapezoid(E_2_I * lam_array, lam_array) * fac_eps_eff
 
             info.append(E_all)
 
@@ -879,7 +879,7 @@ def compute_eps_eff_anal(stel, r = 0.1, alpha = 0.0, N_lam = 100, verbose = Fals
                 # INTEGRAL OVER λ #
                 ###################
                 # Compute integral over λ
-                int_E_arr[j_r, j_a] = np.trapz(E_arr * lam_array, x = lam_array)
+                int_E_arr[j_r, j_a] = np.trapezoid(E_arr * lam_array, x = lam_array)
 
                 if not info is None:
                     # Save information about the integrand of ε_eff per λ. May be used externally for analysis
@@ -898,7 +898,7 @@ def compute_eps_eff_anal(stel, r = 0.1, alpha = 0.0, N_lam = 100, verbose = Fals
     # COMPUTE α-AVERAGE #
     #####################
     # Normalise to π and not 2π : due to factor of 2 in the definition of G²
-    res_int = np.array([np.trapz(np.append(int_E_arr[j_r,:],int_E_arr[j_r,0]), x = np.append(alpha, 2*np.pi))/(np.pi) for j_r in range(N_r)])
+    res_int = np.array([np.trapezoid(np.append(int_E_arr[j_r,:],int_E_arr[j_r,0]), x = np.append(alpha, 2*np.pi))/(np.pi) for j_r in range(N_r)])
 
     ## More precise argument may be found without approximating the |nabla psi| piece
     # Define the averaging
@@ -915,10 +915,10 @@ def compute_eps_eff_anal(stel, r = 0.1, alpha = 0.0, N_lam = 100, verbose = Fals
         # Compute integral over phi and alpha (and normalise the alpha part by 2π)
         nablapsi_chi = lambda chi: np.sqrt((X1c*np.sin(chi) - X1s*np.cos(chi))**2 + \
                         (Y1c*np.sin(chi) - Y1s*np.cos(chi))**2)
-        G_hat_num = np.sum([integ.trapz(nablapsi_chi(chi)/B0, varphi) for chi in chi_grid])/N_chi
+        G_hat_num = np.sum([integ.trapezoid(nablapsi_chi(chi)/B0, varphi) for chi in chi_grid])/N_chi
         
         # Normalisation flux average
-        norm = np.trapz(1/B0/B0, varphi)
+        norm = np.trapezoid(1/B0/B0, varphi)
 
         # Put together
         G_hat_sq_num = G_hat_num**2/norm

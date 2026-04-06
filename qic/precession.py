@@ -184,16 +184,16 @@ def drift_int(stel, varphi, B, BxdBdotdpsi, BxdBdotdalpha, Bmax_in = None, Bmin_
     wa_array = wa_array/norm_array
     wpsi_array = wpsi_array/norm_array
 
-    lB02r = np.trapz(np.ones(stel.nphi), x=stel.varphi)/np.trapz(1/stel.B0/stel.B0, x=stel.varphi)
+    lB02r = np.trapezoid(np.ones(stel.nphi), x=stel.varphi)/np.trapezoid(1/stel.B0/stel.B0, x=stel.varphi)
     mu0 = 4*np.pi*1e-7
     p_fac_array = 2*mu0*stel.p2/lB02r*p_fac_array/norm_array/stel.Bbar # Factor of 2 because of p' -> 2*p2/Bbar
     wa_tot = wa_array + p_fac_array
 
     if scale_wa == True:
         G0 = stel.G0
-        norm = np.trapz(np.ones(stel.nphi), stel.varphi)
-        one_over_B0_squared_avrg = np.trapz(1/stel.B0/stel.B0, stel.varphi)/norm
-        one_over_B0_avrg = np.trapz(1/stel.B0, stel.varphi)/norm
+        norm = np.trapezoid(np.ones(stel.nphi), stel.varphi)
+        one_over_B0_squared_avrg = np.trapezoid(1/stel.B0/stel.B0, stel.varphi)/norm
+        one_over_B0_avrg = np.trapezoid(1/stel.B0, stel.varphi)/norm
         A_ratio = 10
         scale = (G0/A_ratio)**2*one_over_B0_avrg**3/one_over_B0_squared_avrg
         wa_tot = scale * wa_tot
@@ -321,9 +321,9 @@ def maxj_at_bottom(self):
     # beta0 = 2 mu0 p0/ Bbar**2 = - 4 psi_edge mu0 p2/ Bbar**3.
     def define_edge_flux_nae(A_ratio):
         G0 = self.G0
-        norm = np.trapz(np.ones(self.nphi), self.varphi)
-        one_over_B0_squared_avrg = np.trapz(1/self.B0/self.B0, self.varphi)/norm
-        one_over_B0_avrg = np.trapz(1/self.B0, self.varphi)/norm
+        norm = np.trapezoid(np.ones(self.nphi), self.varphi)
+        one_over_B0_squared_avrg = np.trapezoid(1/self.B0/self.B0, self.varphi)/norm
+        one_over_B0_avrg = np.trapezoid(1/self.B0, self.varphi)/norm
         psi_edge = 0.5 * (G0/A_ratio)**2 * one_over_B0_avrg**3/one_over_B0_squared_avrg
         return psi_edge
     

@@ -65,7 +65,7 @@ def calculate_r2(self, no_rc = False, no_interp = False):
         # The expression can be found in Eq.(A50) in [Landreman, Sengupta (2019)]
         # Part I: ∫dφ/B0**2/(2π/N) with the integral being over varphi in a period. Could do a sum in the 
         # regular phi grid using dφ = (dφ/dφ_c) dφ_c = dφ_c (dl/dφ_c)/(dl/dφ) 
-        average_one_over_B0_squared_over_varphi = np.trapz(np.append(1 / (B0 * B0), 1 / (B0[0] * B0[0])), \
+        average_one_over_B0_squared_over_varphi = np.trapezoid(np.append(1 / (B0 * B0), 1 / (B0[0] * B0[0])), \
                                                         np.append(self.varphi, self.varphi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
         # average_one_over_B0_squared_over_varphi = np.sum(1 / (B0 * B0)) / nphi
 
@@ -333,12 +333,12 @@ def calculate_r2(self, no_rc = False, no_interp = False):
     ## Compute associated features of B20 ##
     # Average B20 in varphi
     varphi_ext = np.append(self.varphi, self.varphi[0] + 2*np.pi/self.nfp)
-    normalizer = 1 / np.trapz(np.append(self.d_l_d_varphi,self.d_l_d_varphi[0]), varphi_ext)
-    self.B20_mean = np.trapz(np.append(B20 * self.d_l_d_varphi, B20[0] * self.d_l_d_varphi[0]), varphi_ext) * normalizer
+    normalizer = 1 / np.trapezoid(np.append(self.d_l_d_varphi,self.d_l_d_varphi[0]), varphi_ext)
+    self.B20_mean = np.trapezoid(np.append(B20 * self.d_l_d_varphi, B20[0] * self.d_l_d_varphi[0]), varphi_ext) * normalizer
     # Variation in B20
     self.B20_anomaly = B20 - self.B20_mean
     temp = (B20 - self.B20_mean) * (B20 - self.B20_mean) * self.d_l_d_varphi
-    self.B20_residual = np.sqrt(np.trapz(np.append(temp,temp[0]), varphi_ext) * normalizer) / B0
+    self.B20_residual = np.sqrt(np.trapezoid(np.append(temp,temp[0]), varphi_ext) * normalizer) / B0
     self.B20_variation = np.max(B20) - np.min(B20)
     
     #####################

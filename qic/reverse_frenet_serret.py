@@ -968,13 +968,13 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
         factor2 = factor
         # The next 2 lines ensure inverse Fourier transform(Fourier transform) = identity
         # if n == 0: factor2 = factor2 / 2
-        rc[n] = np.trapz(R0_ext * cosangle * factor2, phi_ext)
-        rs[n] = np.trapz(R0_ext * sinangle * factor2, phi_ext)
-        zc[n] = np.trapz(Z0_ext * cosangle * factor2, phi_ext)
-        zs[n] = np.trapz(Z0_ext * sinangle * factor2, phi_ext)
+        rc[n] = np.trapezoid(R0_ext * cosangle * factor2, phi_ext)
+        rs[n] = np.trapezoid(R0_ext * sinangle * factor2, phi_ext)
+        zc[n] = np.trapezoid(Z0_ext * cosangle * factor2, phi_ext)
+        zs[n] = np.trapezoid(Z0_ext * sinangle * factor2, phi_ext)
 
-    rc[0] = np.trapz(R0_ext, phi_ext) / (2 * np.pi / nfp)
-    zc[0] = np.trapz(Z0_ext, phi_ext) / (2 * np.pi / nfp)
+    rc[0] = np.trapezoid(R0_ext, phi_ext) / (2 * np.pi / nfp)
+    zc[0] = np.trapezoid(Z0_ext, phi_ext) / (2 * np.pi / nfp)
 
     if not lasym:
         rs = rs * 0.0
