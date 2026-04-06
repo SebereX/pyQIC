@@ -22,7 +22,7 @@ env:
 	conda activate $(ENV_NAME) && \
 		pip install --upgrade pip && \
 		pip install -r requirements.txt && \
-		pip install qsc booz-xform
+			pip install qsc booz-xform
 	@echo "\nManual steps required for VMEC and BAD. See README."
 
 # Install pip dependencies
