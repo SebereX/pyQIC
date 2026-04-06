@@ -1,0 +1,33 @@
+#!/bin/bash -l
+
+# Initial working directory:
+#SBATCH -D ./
+#
+#SBATCH --array=0-7  # This specifies a job array with tasks numbered from 1 to 10
+# Standard output and error:
+#SBATCH -o ./tjob.out.%a
+#SBATCH -e ./tjob.err.%a
+# Job Name:
+#SBATCH -J half_period_last_hope
+# Number of nodes and MPI tasks per node:
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=50  
+#
+#SBATCH --mail-type=all
+#SBATCH --mail-user=eduardo.rodriguez@ipp.mpg.de
+#
+# Wall clock limit:
+#SBATCH --time=07:30:00
+
+#Run the program:
+module purge
+module load intel/21.4.0 impi/2021.4 mkl hdf5-mpi netcdf-mpi fftw-mpi  
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${NETCDF_HOME}/lib:${MKL_HOME}/lib/intel64
+
+# Create a unique output directory for each task
+output_dir="A_$SLURM_ARRAY_TASK_ID"
+
+# Move to the output directory
+cd "$output_dir"
+
+srun /u/rodre/bin/xvmec2000 input.temp

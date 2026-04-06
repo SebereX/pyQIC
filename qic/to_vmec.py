@@ -105,7 +105,7 @@ def to_vmec(self, filename, r=0.1, params=dict(), ntheta=20, ntorMax=14, B_scale
     if "pre_niter" in params.keys():
         file_object.write('  PRE_NITER = '+str(params["pre_niter"])+'\n')
     file_object.write('!----- Grid Parameters -----\n')
-    file_object.write('  LASYM = '+str(self.lasym)+'\n')
+    file_object.write('  LASYM = '+str(params.get("lasym", self.lasym))+'\n')
     file_object.write('  NFP = '+str(self.nfp)+'\n')
     file_object.write('  MPOL = '+str(mpol)+'\n')
     file_object.write('  NTOR = '+str(min(ntor,ntorMax))+'\n')
@@ -113,29 +113,34 @@ def to_vmec(self, filename, r=0.1, params=dict(), ntheta=20, ntorMax=14, B_scale
     file_object.write('!----- Pressure Parameters -----\n')
     file_object.write('  PRES_SCALE = '+str(pres_scale)+'\n')
     file_object.write("  PMASS_TYPE = '"+pmass_type+"'\n")
-    file_object.write('  AM = '+str(am)[1:-1]+'\n')
+    # Write AM as plain numbers, not as numpy or Python object representations
+    file_object.write('  AM = ' + ' '.join(f'{float(x):.16e}' for x in am) + '\n')
     file_object.write('!----- Free Boundary Parameters -----\n')
     file_object.write('  LFREEB = F\n')
     file_object.write('!----- Current/Iota Parameters -----\n')
     file_object.write('  CURTOR = '+str(curtor)+'\n')
     file_object.write('  NCURR = '+str(ncurr)+'\n')
     file_object.write("  PCURR_TYPE = '"+pcurr_type+"'\n")
-    file_object.write('  AC = '+str(ac)[1:-1]+'\n')
+    # Write AC as plain numbers, not as numpy or Python object representations
+    file_object.write('  AC = ' + ' '.join(f'{float(x):.16e}' for x in ac) + '\n')
     file_object.write('!----- Axis Parameters -----\n')
     # To convert sin(...) modes to vmec, we introduce a minus sign. This is because in vmec,
     # R and Z ~ sin(m theta - n phi), which for m=0 is sin(-n phi) = -sin(n phi).
-    file_object.write('  RAXIS_CC = '+str(self.Raxis["input_value"]["cos"])[1:-1]+'\n')
-    if self.lasym:
-        file_object.write('  RAXIS_CS = '+str(-np.array(self.Raxis["input_value"]["sin"]))[1:-1]+'\n')
-        file_object.write('  ZAXIS_CC = '+str(self.Zaxis["input_value"]["cos"])[1:-1]+'\n')
-    file_object.write('  ZAXIS_CS = '+str(-np.array(self.Zaxis["input_value"]["sin"]))[1:-1]+'\n')
+    file_object.write('  RAXIS_CC = ' + ' '.join(f'{float(x):.16e}' for j, x in enumerate(self.Raxis["input_value"]["cos"]) if j <= params['ntor']) + '\n')
+    if params.get("lasym", self.lasym):
+        file_object.write('  RAXIS_CS = ' + ' '.join(f'{float(x):.16e}' for j, x in enumerate(-np.array(self.Raxis["input_value"]["sin"])) if j <= params['ntor']) + '\n')
+        file_object.write('  ZAXIS_CC = ' + ' '.join(f'{float(x):.16e}' for j, x in enumerate(self.Zaxis["input_value"]["cos"]) if j <= params['ntor']) + '\n')
+    file_object.write('  ZAXIS_CS = ' + ' '.join(f'{float(x):.16e}' for j, x in enumerate(-np.array(self.Zaxis["input_value"]["sin"])) if j <= params['ntor']) + '\n')
     file_object.write('!----- Boundary Parameters -----\n')
     for m in range(mpol+1):
         for n in range(-ntor,ntor+1):
             if RBC[n+ntor,m]!=0 or ZBS[n+ntor,m]!=0:
                 file_object.write(    '  RBC('+f"{n:03d}"+','+f"{m:03d}"+') = '+f"{RBC[n+ntor,m]:+.16e}"+',    ZBS('+f"{n:03d}"+','+f"{m:03d}"+') = '+f"{ZBS[n+ntor,m]:+.16e}"+'\n')
-                if self.lasym:
-                    file_object.write('  RBS('+f"{n:03d}"+','+f"{m:03d}"+') = '+f"{RBS[n+ntor,m]:+.16e}"+',    ZBC('+f"{n:03d}"+','+f"{m:03d}"+') = '+f"{ZBC[n+ntor,m]:+.16e}"+'\n')
+                if params.get("lasym", self.lasym):
+                    if self.lasym:
+                        file_object.write('  RBS('+f"{n:03d}"+','+f"{m:03d}"+') = '+f"{RBS[n+ntor,m]:+.16e}"+',    ZBC('+f"{n:03d}"+','+f"{m:03d}"+') = '+f"{ZBC[n+ntor,m]:+.16e}"+'\n')
+                    else:
+                        file_object.write('  RBS('+f"{n:03d}"+','+f"{m:03d}"+') = '+f"{0.0:+.16e}"+',    ZBC('+f"{n:03d}"+','+f"{m:03d}"+') = '+f"{0.0:+.16e}"+'\n')
     file_object.write('/\n')
     file_object.close()
 
