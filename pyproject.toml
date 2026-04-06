@@ -3,10 +3,11 @@ name = "pyqic"
 version = "0.1.0"
 description = "Quasisymmetry and omnigeneity code for stellarator optimization and analysis."
 license = "MIT"
-authors = ""
+authors = ["Eduardo Rodriguez <eduardo.rodriguez@ipp.mpg.de>", "Rogerio Jorge", "Matt Landreman"]
 homepage = "https://github.com/your-org/pyqic"
 repository = "https://github.com/your-org/pyqic"
 readme = "README.md"
+packages = [{ include = "qic"}]
 classifiers = [
 	"Programming Language :: Python :: 3",
 	"License :: OSI Approved :: MIT License",
