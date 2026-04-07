@@ -30,17 +30,20 @@ params, dict_gframe = stel.to_gvec(
     verbose = True
     )
 
-####################
-# PLOT CROSS SECTIONS
-####################
-Qic.plot_cross_sections_gframe(
-    dict_gframe,
-    n_cross_sections=10,
-    tolerance=1e-5)
-plt.show()
+print(params)
+
+# ####################
+# # PLOT CROSS SECTIONS
+# ####################
+# Qic.plot_cross_sections_gframe(
+#     dict_gframe,
+#     n_cross_sections=10,
+#     tolerance=1e-5)
+# plt.show()
 
 # ################
 # # RUN GVEC #
 # #############
 # import gvec
+# # May modify the parameters dictionary to adjust mpol, ntor, or desired quantities
 # run = gvec.run(params, runpath="to_gframe_QI_NFP2_Katia")

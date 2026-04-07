@@ -4,7 +4,6 @@ Scripts to load QI configs from the database.
 import ijson
 import numpy as np
 from pathlib import Path
-import scipy.integrate as integrate
 from scipy.integrate import cumulative_trapezoid as cumtrapz
 from scipy.interpolate import make_interp_spline
 
@@ -13,6 +12,7 @@ class Struct():
 
 # Location of the database files
 _DATA_FOLDER_PATH = "/home/../mnt/d/Research/Stellerator/Datsshare_sync/DB/Paper_scripts/"
+_DATAFRAME_PATH = _DATA_FOLDER_PATH + "Database/dataframe.pkl"
 
 @classmethod
 def from_db(cls, name, db_path = _DATA_FOLDER_PATH, **kwargs):
@@ -25,6 +25,49 @@ def from_db(cls, name, db_path = _DATA_FOLDER_PATH, **kwargs):
 ##################
 # DATABASE FILES #
 ##################
+def load_info_from_db(name, dataframe_path = _DATAFRAME_PATH):
+    """
+    Load the info of a specific configuration from database .pkl providing the config name. The config name should be in the format "Nx_xxx_xxx", where N is the number of field periods, and xxx are the identifiers for the database file and configuration ID.
+
+    Parameters
+    ----------
+    config_name: str
+        The name of the configuration, in the format "Nx_xxx_xxx".
+    dataframe_path: str, optional
+        The path to the dataframe .pkl file. Default is _DATAFRAME_PATH.
+
+    Returns
+    -------
+    info: dict
+        Dictionary containing the info of the configuration.
+    """
+    # Undo the config name to obtain the nfp, db_file and config_id
+    _, db_file, config_id = undo_config_name(name, path_header="/home/IPP-HGW/rodre/Documents/qi_database/")
+
+    # Check if the pickle file exists and is a pkl file
+    import os
+    pkl_file = dataframe_path
+    if not os.path.exists(pkl_file):
+        raise FileNotFoundError(f"The file {pkl_file} does not exist.")
+    if not pkl_file.endswith(".pkl"):
+        raise ValueError("The file must be a pickle file.")
+    
+    # Load data
+    import pickle
+    with open(pkl_file, "rb") as file:
+        df = pickle.load(file)
+
+    # Filter the dataframe for the target configuration
+    target_row = df[(df["FilePath"] == db_file) & (df["ID"] == config_id + 1)] # config_id is 0-indexed 
+
+    if target_row.empty:
+        raise ValueError(f"No configuration found with db_file {db_file} and config_id {config_id - 1} in the dataframe.")
+    
+    # Make the info dictionary
+    info = target_row.to_dict(orient="records")[0]
+
+    return info
+
 def load_config_from_db(config_name, db_path = _DATA_FOLDER_PATH, no_alpha = False, solve_geo = True, **kwargs):
     """
     Load a specific configuration from database providing the config name and construct the corresponding QIC object. The config name should be in the format "Nx_xxx_xxx", where N is the number of field periods, and xxx are the identifiers for the database file and configuration ID.

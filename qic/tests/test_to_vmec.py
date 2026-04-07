@@ -83,7 +83,6 @@ def Fourier_Inverse(name, r = 0.05, ntheta = 26, nphi = 51, mpol = 13, ntor = 25
     np.testing.assert_allclose(R_2D, R_2Dnew, atol=atol, rtol=rtol)
     np.testing.assert_allclose(Z_2D, Z_2Dnew, atol=atol, rtol=rtol)
 
-
 class ToVmecTests(unittest.TestCase):
 
     def __init__(self, *args, **kwargs):

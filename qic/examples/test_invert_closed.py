@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.optimize import minimize, least_squares
-from qic.reverse_frenet_serret_old import invert_frenet_axis
+from qic.reverse_frenet_serret import invert_frenet_axis
 
 # Get the machine precision for floating-point numbers
 eps = np.finfo(float).eps
@@ -46,7 +46,7 @@ torsion_func = lambda x: params[1] + params[2]*np.cos(x/stel.L_in*2*np.pi)
 stel.curvature_in = {"function_ell": curvature_func}
 stel.torsion_in = {"function_ell": torsion_func}
 
-mismatch = invert_frenet_axis(stel, curvature, torsion, ell, stel.varphi, plot = False, full_axis = True, func = True) 
+mismatch_in = invert_frenet_axis(stel, curvature, torsion, ell, stel.varphi, plot = False, full_axis = True, func = True, minimal=True) 
 
 def res_closed(params):
     # Curvature and torsion
@@ -112,6 +112,7 @@ print(params)
 print(opt.x)
 print(opt.fun)
 print(opt.status)
+print("Initial mismatch: ", mismatch_in)
 
 
 

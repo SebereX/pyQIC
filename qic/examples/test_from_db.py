@@ -7,7 +7,7 @@ from qic import Qic
 ###################
 # LOAD A CONFIGURATION
 ###################
-stel = Qic.from_db('N3_082_575', db_path='/home/IPP-HGW/rodre/Documents/qi_database/')
+stel = Qic.from_db('N3_082_575', db_path='/home/../mnt/d/Research/Stellerator/Datsshare_sync/DB/Paper_scripts/')
 
 #####################
 # PLOT 

@@ -6,10 +6,10 @@ Created on Fri Jan  4 13:50:23 2019
 
 import math, cmath
 import numpy as np
-from numba import jit
+# from numba import jit
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def single_quadratic(a0, b0, c0):
     ''' Analytical solver for a single quadratic equation
     (2nd order polynomial).
@@ -42,7 +42,7 @@ def single_quadratic(a0, b0, c0):
     return r1, r2
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def single_cubic(a0, b0, c0, d0):
     ''' Analytical closed-form solver for a single cubic equation
     (3rd order polynomial), gives all three roots.
@@ -108,7 +108,7 @@ def single_cubic(a0, b0, c0, d0):
         return r1, r2, r3
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def single_cubic_one(a0, b0, c0, d0):
     ''' Analytical closed-form solver for a single cubic equation
     (3rd order polynomial), gives only one real root.
@@ -165,7 +165,7 @@ def single_cubic_one(a0, b0, c0, d0):
         return S_plus_U - a13
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def single_quartic(a0, b0, c0, d0, e0):
     ''' Analytical closed-form solver for a single quartic equation
     (4th order polynomial). Calls `single_cubic_one` and

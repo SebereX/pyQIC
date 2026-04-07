@@ -23,12 +23,33 @@ def get_git_info(package_name):
     package_location = location_line.split(' ', 1)[1]
     package_path = os.path.join(package_location)
 
+    # Extract location of local git repository
+    location_repo_line = next((line for line in info_lines if line.startswith('Editable project location:')), None)
+    if location_repo_line is not None:
+        repo_location = location_repo_line.split(':', 1)[-1].split(' ', 1)[-1]
+        print(f"Found editable project location: {repo_location}")
+        flag_repo = True
+    else:
+        flag_repo = False
+    
     # Save the current directory
     original_dir = os.getcwd()
 
+    if not flag_repo:
+        version = next((line for line in info_lines if line.startswith('Version:')), None)
+        if version is not None:
+            version = version.split(' ', 1)[1]
+            print(f"Package: {package_name}")
+            print(f"Location: {package_path}")
+            print(f"Version: {version}")
+            return (f"pip {version}", "unknown", "unknown")
+        else:
+            print("Could not find the package version.")
+            return ("unknown", "unknown", "unknown")
+
     try:
         # Change to the package directory
-        os.chdir(package_path)
+        os.chdir(repo_location)
 
         # Get the current git branch
         branch_result = subprocess.run(
