@@ -11,6 +11,7 @@ from scipy.integrate import solve_ivp, cumulative_trapezoid, quad
 from scipy.interpolate import PchipInterpolator, make_interp_spline
 from sklearn.decomposition import PCA
 from scipy.spatial.transform import Rotation as R
+from .util import trapz
 # from .util_interp import convert_to_spline
 
 logger = logging.getLogger(__name__)
@@ -968,13 +969,13 @@ def to_Fourier_axis(R0, Z0, nfp, ntor, lasym, phi_in = None):
         factor2 = factor
         # The next 2 lines ensure inverse Fourier transform(Fourier transform) = identity
         # if n == 0: factor2 = factor2 / 2
-        rc[n] = np.trapezoid(R0_ext * cosangle * factor2, phi_ext)
-        rs[n] = np.trapezoid(R0_ext * sinangle * factor2, phi_ext)
-        zc[n] = np.trapezoid(Z0_ext * cosangle * factor2, phi_ext)
-        zs[n] = np.trapezoid(Z0_ext * sinangle * factor2, phi_ext)
+        rc[n] = trapz(R0_ext * cosangle * factor2, phi_ext)
+        rs[n] = trapz(R0_ext * sinangle * factor2, phi_ext)
+        zc[n] = trapz(Z0_ext * cosangle * factor2, phi_ext)
+        zs[n] = trapz(Z0_ext * sinangle * factor2, phi_ext)
 
-    rc[0] = np.trapezoid(R0_ext, phi_ext) / (2 * np.pi / nfp)
-    zc[0] = np.trapezoid(Z0_ext, phi_ext) / (2 * np.pi / nfp)
+    rc[0] = trapz(R0_ext, phi_ext) / (2 * np.pi / nfp)
+    zc[0] = trapz(Z0_ext, phi_ext) / (2 * np.pi / nfp)
 
     if not lasym:
         rs = rs * 0.0

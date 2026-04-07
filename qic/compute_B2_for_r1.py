@@ -4,10 +4,9 @@ This module contains the calculation for the O(r^2) B for r1 construction
 
 import logging
 import numpy as np
-from .util import mu0
+from .util import mu0, trapz
 import scipy.integrate as integrate
 from scipy.integrate import cumulative_trapezoid as cumtrapz
-from scipy.integrate import trapezoid as trapz
 from .optimize_nae import min_geo_qi_consistency
 from .spectral_diff_matrix import spectral_diff_matrix_extended
 
@@ -65,7 +64,7 @@ def compute_B2_for_r1(self, verbose = False, debug = False):
         # The expression can be found in Eq.(A50) in [Landreman, Sengupta (2019)]
         # Part I: ∫dφ/B0**2/(2π/N) with the integral being over varphi in a period. Could do a sum in the 
         # regular phi grid using dφ = (dφ/dφ_c) dφ_c = dφ_c (dl/dφ_c)/(dl/dφ) 
-        average_one_over_B0_squared_over_varphi = np.trapz(np.append(1 / (B0 * B0), 1 / (B0[0] * B0[0])), \
+        average_one_over_B0_squared_over_varphi = trapz(np.append(1 / (B0 * B0), 1 / (B0[0] * B0[0])), \
                                                         np.append(self.varphi, self.varphi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
         # average_one_over_B0_squared_over_varphi = np.sum(1 / (B0 * B0)) / nphi
 

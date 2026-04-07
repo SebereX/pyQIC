@@ -8,7 +8,7 @@ import numpy as np
 from scipy.interpolate import CubicSpline as spline
 from scipy.interpolate import BSpline, make_interp_spline, PchipInterpolator
 from .spectral_diff_matrix import spectral_diff_matrix, finite_difference_matrix, construct_periodic_diff_matrix, construct_ext_periodic_diff_matrix
-from .util import fourier_minimum
+from .util import fourier_minimum, trapz
 from .input_structure import evaluate_input_on_grid
 from .fourier_interpolation import fourier_interpolation_matrix, make_interp_fourier
 from .reverse_frenet_serret import invert_frenet_axis, to_Fourier_axis
@@ -194,12 +194,12 @@ def init_axis(self, omn_complete = True, flag_only_axis = False):
         ## Find immediate properties of the curve ##
         # Total axis length (taking the nfp into account)
         phi_ext = np.append(phi,phi[0]+2*np.pi/nfp)
-        axis_length = np.trapezoid(np.append(d_l_d_phi,d_l_d_phi[0]), phi_ext) * nfp
+        axis_length = trapz(np.append(d_l_d_phi,d_l_d_phi[0]), phi_ext) * nfp
 
         # Mean major radius
-        mean_of_R = np.trapezoid(np.append(R0 * d_l_d_phi, R0[0] * d_l_d_phi[0]), phi_ext) * nfp / axis_length
+        mean_of_R = trapz(np.append(R0 * d_l_d_phi, R0[0] * d_l_d_phi[0]), phi_ext) * nfp / axis_length
         # Mean vertical displacement
-        mean_of_Z = np.trapezoid(np.append(Z0 * d_l_d_phi, Z0[0] * d_l_d_phi[0]), phi_ext) * nfp / axis_length
+        mean_of_Z = trapz(np.append(Z0 * d_l_d_phi, Z0[0] * d_l_d_phi[0]), phi_ext) * nfp / axis_length
 
         # standard_deviation_of_R = np.sqrt(np.sum((R0 - mean_of_R) ** 2 * d_l_d_phi) * d_phi * nfp / axis_length)
         # standard_deviation_of_Z = np.sqrt(np.sum((Z0 - mean_of_Z) ** 2 * d_l_d_phi) * d_phi * nfp / axis_length)
@@ -306,7 +306,7 @@ def init_axis(self, omn_complete = True, flag_only_axis = False):
         ###############################################
         if self.omn == False:
             # Compute G0 for QS field: in here B0 is a scalar (this was done in __init__)
-            G0 = self.sG * np.trapezoid(np.append(self.B0 * d_l_d_phi, self.B0[0] * d_l_d_phi[0]), \
+            G0 = self.sG * trapz(np.append(self.B0 * d_l_d_phi, self.B0[0] * d_l_d_phi[0]), \
                                     np.append(self.phi,self.phi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
 
             abs_G0_over_B0 = self.sG*G0/self.B0
@@ -355,7 +355,7 @@ def init_axis(self, omn_complete = True, flag_only_axis = False):
                 # In here B0_in is assumed to be provided in varphi
                 B0 = self.evaluate_input_on_grid(self.B0_in, varphi) 
                 # Construct G0 (everything is in the equally spaced phi grid)
-                abs_G0 = np.trapezoid(np.append(B0 * d_l_d_phi, B0[0] * d_l_d_phi[0]), \
+                abs_G0 = trapz(np.append(B0 * d_l_d_phi, B0[0] * d_l_d_phi[0]), \
                                         np.append(phi,phi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
                 # Update nu by inverting d varphi / d phi - 1 = d nu / d phi and 
                 # d l/d phi = (abs_G0/B0) d varphi/d phi
@@ -383,7 +383,7 @@ def init_axis(self, omn_complete = True, flag_only_axis = False):
                 self.Bbar = self.Bbar_in
 
             # Final value for G0
-            G0 = self.sG * np.trapezoid(np.append(B0 * d_l_d_phi,B0[0] * d_l_d_phi[0]), \
+            G0 = self.sG * trapz(np.append(B0 * d_l_d_phi,B0[0] * d_l_d_phi[0]), \
                                         np.append(phi,phi[0]+2*np.pi/self.nfp)) / (2*np.pi/self.nfp)
             abs_G0_over_B0 = np.abs(G0/self.Bbar)
 

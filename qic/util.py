@@ -14,6 +14,7 @@ from scipy.interpolate import CubicSpline as spline
 logger = logging.getLogger(__name__)
 
 mu0 = 4 * np.pi * 1e-7
+trapz = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
 
 class Struct():
     """

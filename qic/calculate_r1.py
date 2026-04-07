@@ -6,7 +6,7 @@ and computing diagnostics of the O(r^1) solution.
 import logging
 import numpy as np
 from scipy.linalg import solve
-from .util import fourier_minimum
+from .util import fourier_minimum, trapz
 from .newton import newton
 from scipy.interpolate import CubicSpline as spline
 
@@ -538,8 +538,8 @@ def r1_diagnostics(self):
     q = self.X1s * self.Y1c - self.X1c * self.Y1s
     self.elongation = (p + np.sqrt(p * p - 4 * q * q)) / (2 * np.abs(q))
     varphi_ext = np.append(self.varphi, self.varphi[0] + 2*np.pi/self.nfp)
-    self.mean_elongation = np.trapezoid(np.append(self.elongation * self.d_l_d_varphi,self.elongation[0] * self.d_l_d_varphi[0]), varphi_ext) /\
-          np.trapezoid(np.append(self.d_l_d_varphi,self.d_l_d_varphi[0]), varphi_ext)
+    self.mean_elongation = trapz(np.append(self.elongation * self.d_l_d_varphi,self.elongation[0] * self.d_l_d_varphi[0]), varphi_ext) /\
+        trapz(np.append(self.d_l_d_varphi,self.d_l_d_varphi[0]), varphi_ext)
     # index = np.argmax(self.elongation)
     self.max_elongation = -fourier_minimum(-self.elongation)
 

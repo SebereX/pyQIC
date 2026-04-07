@@ -3,6 +3,7 @@ This module contains the routines for computing shape gradients of 2nd order fea
 """
 
 import numpy as np
+from .util import trapz
 
 def compute_L_F_matrices(stel, Y_mat = None, check = False):
     """
@@ -407,7 +408,7 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
         ## Simple case where we minimise (X2c)^2 + (X2s)^2 ##
         # Compute ideal scale
         integ = G_X2c**2 + G_X2s**2
-        ideal = stel.nfp*np.trapezoid(np.append(integ, integ[0]), 
+        ideal = stel.nfp*trapz(np.append(integ, integ[0]), 
                                   np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
         eps_ideal = stel.d2_volume_d_psi2/ideal if stel.d2_volume_d_psi2 > 0 else 0
         # Construct modified 2nd order shaping
@@ -447,30 +448,30 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
 
         ## Minimal magnetic well ## (option to impose some size of the well)
         integ = G_X2c * stel.X2c + G_X2s * stel.X2s
-        mag_well_min = stel.d2_volume_d_psi2 - stel.nfp*np.trapezoid(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
+        mag_well_min = stel.d2_volume_d_psi2 - stel.nfp*trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
 
         ## Lagrange multiplier ##
         vec_temp = np.linalg.solve(M_mat, Lambda)
         integ = G_X2c * vec_temp[:nphi] + G_X2s * vec_temp[nphi:]
-        num = mag_well_min + stel.nfp*np.trapezoid(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
+        num = mag_well_min + stel.nfp*trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
         if check:
             M_inv = np.linalg.inv(M_mat)
             integ = np.matmul(M_inv, Lambda)
             integ = G_X2c * integ[:nphi] + G_X2s * integ[nphi:]
             integ_alt = np.matmul(M_inv.transpose(), G_tot)
             integ_alt = Lambda[:nphi] * integ_alt[:nphi] + Lambda[nphi:] * integ_alt[nphi:]
-            num_alt = mag_well_min + stel.nfp*np.trapezoid(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
+            num_alt = mag_well_min + stel.nfp*trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
             assert np.abs(num_alt - num).max() < 1e-10, Warning("numerator lagrange multiplier error")
 
         ## Check M inv ##
         vec_temp = np.linalg.solve(M_mat, G_tot)
         integ = G_X2c * vec_temp[:nphi] + G_X2s * vec_temp[nphi:]
-        den = stel.nfp*np.trapezoid(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
+        den = stel.nfp*trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
         if check:
             assert np.abs(vec_temp - np.matmul(M_inv.transpose(), G_tot)).max() < 1e-10, Warning("Error M inv")
             integ = np.matmul(M_inv, G_tot)
             integ = G_X2c * integ[:nphi] + G_X2s * integ[nphi:]
-            den_alt = stel.nfp*np.trapezoid(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
+            den_alt = stel.nfp*trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
             assert np.abs(den_alt - den).max() < 1e-10, Warning("denominator lagrange multiuplier error")
 
         # Check if well is a single scalar or list
@@ -491,7 +492,7 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
                 if check:
                     # Check integrand
                     integ = G_X2c * mod_X2c[j_well, :] + G_X2s * mod_X2s[j_well, :]
-                    V_pp_est = stel.nfp*np.trapezoid(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
+                    V_pp_est = stel.nfp*trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
                     assert np.abs(mag_well_min + well_val + V_pp_est).max() < 1e-10, Warning("V'' problems")
 
         else:
@@ -505,7 +506,7 @@ def mag_well_reshape(stel, simple = False, check = False, run = True, well = 0.0
             if check:
                 # Check integrand
                 integ = G_X2c * mod_X2c + G_X2s * mod_X2s
-                V_pp_est = stel.nfp*np.trapezoid(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
+                V_pp_est = stel.nfp*trapz(np.append(integ, integ[0]), np.append(stel.varphi, 2*np.pi/stel.nfp + stel.varphi[0]))
                 assert np.abs(mag_well_min + well + V_pp_est).max() < 1e-10, Warning("V'' problems")
 
         stel.eps_ideal = eps_ideal
@@ -684,7 +685,7 @@ def compute_sensitivity_Shafranov_shift(stel, L_matrix = None, check_lin = False
         ################
         # Part I: ∫dφ/B0**2/(2π/N) with the integral being over varphi in a period. Could do a sum in the 
         # regular phi grid using dφ = (dφ/dφ_c) dφ_c = dφ_c (dl/dφ_c)/(dl/dφ) 
-        average_one_over_B0_squared_over_varphi = np.trapezoid(np.append(1 / (B0 * B0), 1 / (B0[0] * B0[0])), \
+        average_one_over_B0_squared_over_varphi = trapz(np.append(1 / (B0 * B0), 1 / (B0[0] * B0[0])), \
                                                         np.append(stel.varphi, stel.varphi[0]+2*np.pi/stel.nfp)) / (2*np.pi/stel.nfp)
         # We need to compute the form of β0 from equilibrium, as given in Eq.(A51) in [Landreman, Sengupta (2019)] but without p2
         # Part I: rhs of the equation, β0' = rhs
