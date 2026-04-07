@@ -72,7 +72,7 @@ def undo_config_name(config_name, path_header = _DATA_FOLDER_PATH):
     db_file : str
         The name of the database file, which contains the configuration ID.
     config_id : int
-        The ID of the configuration in the database.
+        The ID of the configuration in the database, 0-indexed. Note that the ID in the database is 1-indexed, so the returned config_id is the database ID minus 1.
     """
     parts = config_name.split("_")
     nfp = int(parts[0][1:])
@@ -90,7 +90,7 @@ def load_config_id_file_from_db(db_file, config_id, verbose = False, no_alpha = 
         db_file: str
             Path to the database file in JSON format.
         config_id: int
-            Configuration index to load from the database.
+            Config ID to load from the database (0-indexed). Note that the ID in the database is 1-indexed, so the input config_id should be the database ID minus 1.
         verbose: bool, optional
             Whether to print verbose output. Default is False.
         no_alpha: bool, optional
