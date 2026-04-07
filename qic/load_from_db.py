@@ -81,6 +81,34 @@ def undo_config_name(config_name, path_header = _DATA_FOLDER_PATH):
 
     return nfp, db_file, config_id
 
+def do_config_name(db_file, config_id, path_header = _DATA_FOLDER_PATH):
+    """
+    Do a config name from the nfp, db_file and config_id.
+    Parameters
+    ----------
+    db_file : str
+        The name of the database file, which contains the configuration ID.
+    config_id : int
+        The ID of the configuration in the database, 0-indexed. Note that the ID in the database is 1-indexed, so the input config_id should be the database ID minus 1.
+    path_header : str, optional
+        The path header for the database files. Default is _DATA_FOLDER_PATH.
+
+    Returns
+    -------
+    config_name : str
+        The name of the configuration, in the format "Nx_xxx_xxx".
+    """
+    # Extract the identifier for the database file from the db_file path
+    db_file_identifier = Path(db_file).stem.split("-")[-1].split(".")[0]
+
+    # Extract the nfp from the db_file path
+    nfp = int(Path(db_file).stem.split("-")[2][1:])
+    
+    # Construct the config name
+    config_name = f"N{nfp}_{db_file_identifier}_{config_id:04d}"
+    
+    return config_name
+
 def load_config_id_file_from_db(db_file, config_id, verbose = False, no_alpha = False, solve_geo = True, **kwargs):
     """
     Load a specific configuration from database file and construct the corresponding QIC object.

@@ -29,7 +29,7 @@ class Qic():
     from .calculate_r3 import calculate_r3
     from .compute_B2_for_r1 import compute_B2_for_r1
     from .fqs import multi_cubic
-    from .load_from_db import from_db
+    from .load_from_db import from_db, do_config_name, undo_config_name
     from .mercier import mercier, mercier_detailed
     from .precession import plot_precession_different_alpha, maxj_at_bottom
     from .omnigeneity import compute_eps_eff, compute_eps_eff_anal, omn_reshape
