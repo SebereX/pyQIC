@@ -15,12 +15,33 @@ _DATA_FOLDER_PATH = "/home/../mnt/d/Research/Stellerator/Datsshare_sync/DB/Paper
 _DATAFRAME_PATH = _DATA_FOLDER_PATH + "Database/dataframe.pkl"
 
 @classmethod
-def from_db(cls, name, db_path = _DATA_FOLDER_PATH, **kwargs):
+def from_db(cls, name, db_path = _DATA_FOLDER_PATH, reshape = True, **kwargs):
     """
-    Load a configuration from the built-in database of configurations.
+    Load a configuration from the built-in database of configurations. If reshape is True, the mag_well_reshape function will be applied to the loaded configuration. Note that the config name should be in the format "Nx_xxx_xxx", where N is the number of field periods, and xxx are the identifiers for the database file and configuration ID.
+
+    Parameters
+    ----------
+    name: str
+        The name of the configuration, in the format "Nx_xxx_xxx".
+    db_path: str, optional
+        The path to the database files. Default is _DATA_FOLDER_PATH.
+    reshape: bool, optional
+        Whether to apply the mag_well_reshape function to the loaded configuration. Default is True.
+    **kwargs:
+        Additional arguments to pass to the load_config_from_db function.
+
+    Returns
+    -------
+    stel: QIC class object
+        QIC class object corresponding to the loaded configuration.
     """
     kwargs = load_config_from_db(name, db_path=db_path, **kwargs)
-    return cls(**kwargs)
+    stel = cls(**kwargs)
+
+    if reshape:
+        cls.mag_well_reshape(stel)
+
+    return stel
 
 ##################
 # DATABASE FILES #
