@@ -59,9 +59,22 @@ def fourier_minimum(y):
         pass
 
     logger.info('bracket={}, f(bracket)={}'.format(bracket, [func(bracket[0]), func(bracket[1]), func(bracket[2])]))
+
     #solution = scipy.optimize.minimize_scalar(func, bracket=bracket, options={"disp": True})
     solution = scipy.optimize.minimize_scalar(func, bracket=bracket)
+
+    # Check that solution no too far from the initial guess, which would suggest that the optimization failed:
+    if np.abs(solution.x - index * dx) > 2 * dx:
+        logger.warning('Warning: the minimum found by optimization is more than 2 grid points away from the initial guess, which suggests that the optimization may have failed. solution.x={}, index*dx={}'.format(solution.x, index*dx))
+        
     return solution.fun
+
+def fourier_maximum(y):
+    """
+    Given uniformly spaced data y on a periodic domain, find the
+    maximum of the spectral interpolant.
+    """
+    return -fourier_minimum(-y)
 
 def to_Fourier(R_2D, Z_2D, nfp, mpol, ntor, lasym):
     """

@@ -6,7 +6,7 @@ Functions for computing the grad B tensor and grad grad B tensor.
 
 import logging
 import numpy as np
-from .util import Struct, fourier_minimum
+from .util import Struct, fourier_maximum
 
 #logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ def calculate_grad_B_tensor(self):
     # L∇ definition
     self.L_grad_B = s.B0 * np.sqrt(2 / self.grad_B_colon_grad_B)
     self.inv_L_grad_B = 1.0 / self.L_grad_B
-    self.min_L_grad_B = fourier_minimum(self.L_grad_B)
+    self.min_L_grad_B = 1/fourier_maximum(self.inv_L_grad_B)
     
 ########################################
 # Have not touched the functions below #

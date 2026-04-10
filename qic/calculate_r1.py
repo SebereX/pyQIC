@@ -5,10 +5,9 @@ and computing diagnostics of the O(r^1) solution.
 
 import logging
 import numpy as np
-from scipy.linalg import solve
-from .util import fourier_minimum, trapz
 from .newton import newton
-from scipy.interpolate import CubicSpline as spline
+from scipy.linalg import solve
+from .util import fourier_minimum, fourier_maximum, trapz 
 
 #logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -541,7 +540,7 @@ def r1_diagnostics(self):
     self.mean_elongation = trapz(np.append(self.elongation * self.d_l_d_varphi,self.elongation[0] * self.d_l_d_varphi[0]), varphi_ext) /\
         trapz(np.append(self.d_l_d_varphi,self.d_l_d_varphi[0]), varphi_ext)
     # index = np.argmax(self.elongation)
-    self.max_elongation = -fourier_minimum(-self.elongation)
+    self.max_elongation = fourier_maximum(self.elongation)
 
     ## Other ellipse features ##
     # Area of the ellipse in the plane perpendicular to the magnetic axis
