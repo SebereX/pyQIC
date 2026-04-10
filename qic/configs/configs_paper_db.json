@@ -1,0 +1,98 @@
+{
+  "L_grad_B": {"Description": "Configurations with the largest L_grad_B values in the DB for each field period. \n Paper loc : Figure 1b ", 
+              "Configs": [
+                            "N1_009_0114",
+                            "N2_318_405",
+                            "N3_031_419",
+                            "N4_199_506",
+                            "N5_126_585",
+                            "N6_122_593"
+                          ]
+                },
+  "Acmhd": {"Description": "Configurations with the lowest critical aspect ratio (Acmhd) values in the DB for each field period. \n Paper loc : Figure 4b ", 
+              "Configs": [
+                            "N1_005_582",
+                            "N2_102_215",
+                            "N3_309_225",
+                            "N4_255_565",
+                            "N5_159_578",
+                            "N6_154_585"
+                          ]
+        },
+  "Crown": {"Description": "Crown (figure 8) family configurations in the DB for each field period. \n Paper loc : Figure 7 ", 
+              "Configs": [
+                            "N2_231_395",
+                            "N3_369_185",
+                            "N4_004_585",
+                            "N5_213_545",
+                            "N6_154_585"
+                          ]
+        } ,
+  "Flat": {"Description": "Flat family configurations in the DB for each field period. \n Paper loc : Figure 7 ", 
+              "Configs": [
+                            "N2_102_215",
+                            "N3_309_225",
+                            "N4_255_565",
+                            "N5_229_586",
+                            "N6_160_605"
+                          ]
+          },
+  "N1_Acmhd": {"Description": "Low critical aspect ratio (Acmhd) configurations with number of field period 1 in the DB for each field period. \n Paper loc : Figure 8 ", 
+              "Configs": [
+                          "N1_006_523",
+                          "N1_005_585",
+                          "N1_004_267",
+                          "N1_003_661"
+                        ]
+                },
+  "fJ": {"Description": "Configurations with the largest fraction of Max-J particles in a volume up to r = 0.1 in the DB for each field period.", 
+              "Configs": [
+                        "N1_004_946",
+                        "N2_566_220",
+                        "N3_649_225",
+                        "N4_353_220",
+                        "N5_314_600",
+                        "N6_454_358"
+                      ]
+        },
+  "Figure_9": {"Description": "Configurations part of Figure 9 of the paper. They correspond to low shaping, large max-J fraction, nfp 2 configs from DB.", 
+              "Configs": [
+                          "N2_610_10",
+                          "N2_576_210",
+                          "N2_566_220",
+                          "N2_425_435"
+                        ]
+  },
+  "Large_curvature_cases": {"Description": "Configurations with large curvature cases. 'Weird' configurations. \n Paper loc : Figure 10 ", 
+              "Configs":   [
+                            "N3_577_0",
+                            "N4_356_0",
+                            "N5_163_130"
+                          ]
+  },
+
+  "eps_eff_edge_mhd": {"Description": "Configurations with lowest effective ripple at the edge. \n Paper loc : Figure 12b ", 
+              "Configs": [
+                "N1_009_030",
+                "N2_585_035",
+                "N3_309_165",
+                "N4_371_155",
+                "N5_375_155",
+                "N6_448_439"
+              ]
+            },
+  "Good": {"Description": "Largest L_grad_B configurations from the subset satisfying the threshold L_grad_B > 0.25, eps_eff < 0.01 and A_c_mhd < 10 for each field period in the DB.  \n Paper loc : Figure 14a ", 
+              "Configs": [
+                "N1_009_114",
+                "N2_318_396",
+                "N3_103_225",
+                "N4_199_586",
+                "N5_230_585"
+  ]},
+  "Figure_14b": {"Description": "Configurations part of Figure 14b of the paper. They are differently shaped good configurations with 2 field periods. \n Paper loc : Figure 14b ", 
+              "Configs": [
+                "N2_224_135",
+                "N2_433_260",
+                "N2_594_210"
+              ]}
+}

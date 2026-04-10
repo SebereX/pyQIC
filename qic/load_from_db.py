@@ -15,7 +15,7 @@ _DATA_FOLDER_PATH = "/home/../mnt/d/Research/Stellerator/Datsshare_sync/DB/Paper
 _DATAFRAME_PATH = _DATA_FOLDER_PATH + "Database/dataframe.pkl"
 
 @classmethod
-def from_db(cls, name, db_path = _DATA_FOLDER_PATH, reshape = True, **kwargs):
+def from_db(cls, name, db_path = _DATA_FOLDER_PATH, reshape = True, help = False, **kwargs):
     """
     Load a configuration from the built-in database of configurations. If reshape is True, the mag_well_reshape function will be applied to the loaded configuration. Note that the config name should be in the format "Nx_xxx_xxx", where N is the number of field periods, and xxx are the identifiers for the database file and configuration ID.
 
@@ -27,6 +27,8 @@ def from_db(cls, name, db_path = _DATA_FOLDER_PATH, reshape = True, **kwargs):
         The path to the database files. Default is _DATA_FOLDER_PATH.
     reshape: bool, optional
         Whether to apply the mag_well_reshape function to the loaded configuration. Default is True.
+    help: bool, optional
+        Whether to show some selected configurations from the paper in the database.
     **kwargs:
         Additional arguments to pass to the load_config_from_db function.
 
@@ -35,6 +37,40 @@ def from_db(cls, name, db_path = _DATA_FOLDER_PATH, reshape = True, **kwargs):
     stel: QIC class object
         QIC class object corresponding to the loaded configuration.
     """
+    # If help, print configurations from DB paper in /qic_path/configs/configs_paper_db.json
+
+    if help:
+        # Find the path to the configs_paper_db.json file
+        configs_paper_db_path = Path(__file__).parent / "configs" / "configs_paper_db.json"
+        if not configs_paper_db_path.is_file():
+            raise FileNotFoundError(f"The file {configs_paper_db_path} does not exist.")
+
+        # Load the configuration list
+        import json
+        with open(configs_paper_db_path, "r") as f:
+            configs_paper_db = json.load(f)
+
+        # Elegant and structured printing
+        print("\n" + "="*70)
+        print("Database configurations from the paper (format: 'Nx_xxx_xxx')")
+        print("="*70)
+        for case, case_data in configs_paper_db.items():
+            print(f"\n{case.center(68, '-')}")
+            desc = case_data.get("Description", "")
+            print(f"Description: {desc}")
+            configs = case_data.get("Configs", [])
+            if configs:
+                print("Configs:")
+                # Print configs in columns, 4 per row
+                col_width = max(len(cfg) for cfg in configs) + 2
+                n_cols = 4
+                for i in range(0, len(configs), n_cols):
+                    row = configs[i:i+n_cols]
+                    print("  " + "".join(cfg.ljust(col_width) for cfg in row))
+            print("-"*68)
+        print("="*70 + "\n")
+        return
+
     kwargs = load_config_from_db(name, db_path=db_path, **kwargs)
     stel = cls(**kwargs)
 
