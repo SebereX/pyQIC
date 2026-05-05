@@ -15,9 +15,9 @@ _DATA_FOLDER_PATH = "/home/../mnt/d/Research/Stellerator/Datsshare_sync/DB/Paper
 _DATAFRAME_PATH = _DATA_FOLDER_PATH + "Database/dataframe.pkl"
 
 @classmethod
-def from_db(cls, name, db_path = _DATA_FOLDER_PATH, reshape = True, help = False, **kwargs):
+def from_db(cls, name, db_path = _DATA_FOLDER_PATH, reshape = True, help = False, online = False, **kwargs):
     """
-    Load a configuration from the built-in database of configurations. If reshape is True, the mag_well_reshape function will be applied to the loaded configuration. Note that the config name should be in the format "Nx_xxx_xxx", where N is the number of field periods, and xxx are the identifiers for the database file and configuration ID.
+    Load a configuration from the built-in database of configurations or online repository. If reshape is True, the mag_well_reshape function will be applied to the loaded configuration. Note that the config name should be in the format "Nx_xxx_xxx", where N is the number of field periods, and xxx are the identifiers for the database file and configuration ID.
 
     Parameters
     ----------
@@ -29,6 +29,8 @@ def from_db(cls, name, db_path = _DATA_FOLDER_PATH, reshape = True, help = False
         Whether to apply the mag_well_reshape function to the loaded configuration. Default is True.
     help: bool, optional
         Whether to show some selected configurations from the paper in the database.
+    online: bool, optional
+        Whether to load the configuration from the online database. Default is False, and will only run if the online flag is True. N
     **kwargs:
         Additional arguments to pass to the load_config_from_db function.
 
@@ -71,7 +73,7 @@ def from_db(cls, name, db_path = _DATA_FOLDER_PATH, reshape = True, help = False
         print("="*70 + "\n")
         return
 
-    kwargs = load_config_from_db(name, db_path=db_path, **kwargs)
+    kwargs = load_config_from_db(name, db_path=db_path, online = online, **kwargs)
     stel = cls(**kwargs)
 
     if reshape:
@@ -125,7 +127,7 @@ def load_info_from_db(name, dataframe_path = _DATAFRAME_PATH):
 
     return info
 
-def load_config_from_db(config_name, db_path = _DATA_FOLDER_PATH, no_alpha = False, solve_geo = True, **kwargs):
+def load_config_from_db(config_name, db_path = _DATA_FOLDER_PATH, no_alpha = False, solve_geo = True, online = False, **kwargs):
     """
     Load a specific configuration from database providing the config name and construct the corresponding QIC object. The config name should be in the format "Nx_xxx_xxx", where N is the number of field periods, and xxx are the identifiers for the database file and configuration ID.
 
@@ -139,6 +141,8 @@ def load_config_from_db(config_name, db_path = _DATA_FOLDER_PATH, no_alpha = Fal
             Whether to use the alpha_tilde input or resolve for it. Default is False.
         solve_geo: bool, optional
             Whether to construct the axis in R3. Default is True.
+        online: bool, optional
+            Whether to load the configuration from the online database. Default is False, and will only run if the online flag is True. 
         **kwargs: 
             additional arguments to pass to the QIC class.
 
@@ -147,11 +151,15 @@ def load_config_from_db(config_name, db_path = _DATA_FOLDER_PATH, no_alpha = Fal
         stel_qic: QIC class object.
             QIC class object corresponding to the loaded configuration.
     """
-    # Undo the config name to obtain the nfp, db_file and config_id
-    _, db_file, config_id = undo_config_name(config_name, path_header=db_path)
+    if online:
+        props_stel = load_config_id_file_from_db_online(config_name, verbose = False, no_alpha = no_alpha, solve_geo = solve_geo, **kwargs)
 
-    # Load the configuration from the database file and construct the QIC object
-    props_stel = load_config_id_file_from_db(db_file, config_id, no_alpha = no_alpha, solve_geo = solve_geo, **kwargs)
+    else:
+        # Undo the config name to obtain the nfp, db_file and config_id
+        _, db_file, config_id = undo_config_name(config_name, path_header=db_path)
+
+        # Load the configuration from the database file and construct the QIC object
+        props_stel = load_config_id_file_from_db(db_file, config_id, no_alpha = no_alpha, solve_geo = solve_geo, **kwargs)
 
     return props_stel
 
@@ -209,9 +217,9 @@ def do_config_name(db_file, config_id, path_header = _DATA_FOLDER_PATH):
     
     return config_name
 
-def load_config_id_file_from_db(db_file, config_id, verbose = False, no_alpha = False, solve_geo = True, **kwargs):
+def load_config_id_file_from_db(db_file, config_id, verbose = False, no_alpha = False, solve_geo = True, **kwargs): 
     """
-    Load a specific configuration from database file and construct the corresponding QIC object.
+    Load a specific configuration from database file and return the arguments necessary to initialise a QIC class object.
 
     Parameters
     ----------
@@ -230,8 +238,8 @@ def load_config_id_file_from_db(db_file, config_id, verbose = False, no_alpha = 
 
     Returns
     -------
-        stel_qic: QIC class object.
-            QIC class object corresponding to the loaded configuration.
+        props_stel: dict
+            Dictionary containing the arguments necessary to initialise a QIC class object.
     """
     # Check if the file exists
     if not Path(db_file).is_file():
@@ -247,6 +255,96 @@ def load_config_id_file_from_db(db_file, config_id, verbose = False, no_alpha = 
             if current_index == config_id:
                 config = {nam: np.array(val) for nam, val in obj}
                 break
+
+    # Make stel object
+    stel, _ = make_stel_object(config)
+
+    # Run pyQIC
+    if verbose:
+        print('Running pyQIC...')
+    props_stel = construct_qic(stel, model = False, smooth = False, axis_complete = False, # Do not close the axis further\ 
+                             solve_geo = solve_geo,     # Construct the axis in R3
+                             Bbar = 1, verbose = verbose, no_alpha = no_alpha, # Whether to skip alpha_tilde or recalculate it
+                             **kwargs)
+    return props_stel
+
+def download_from_database(nfp, sweep_id, list_id):
+    """
+    Download a specific configuration file from the online database and return the local path to the downloaded file.
+
+    Parameters
+    ----------
+    nfp: int
+        Number of field periods of the configuration.
+    sweep_id: int
+        Identifier for the database file (sweep), which contains the configuration ID.
+    list_id: int
+        The ID of the configuration in the database, 0-indexed. 
+
+    Returns
+    -------
+    local_path: str
+        The local path to the downloaded configuration file.
+    """
+    import requests
+    import shutil
+
+    # Name of downloaded file:
+    filename = f"N{nfp}_{sweep_id:03d}_{list_id:04d}.json"
+    temp_dir = Path("temp_db")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    local_path = temp_dir / filename
+    # Address for download
+    url = f"https://s3.nexus.mpcdf.mpg.de/public-pyqic-database/data/N{nfp}/sweep{sweep_id:03d}/{filename}"
+
+    with requests.get(url, stream=True) as response, open(local_path, "wb") as file:
+        if not response.ok:
+            raise RuntimeError(
+                f"Failed to download configuration nfp={nfp}, sweep_id={sweep_id}, list_id={list_id} from url={url}: {response.status_code} {response.reason}"
+            )
+        shutil.copyfileobj(response.raw, file)
+        print(f'file "{local_path}" sucessfully downloaded from {url}') 
+    
+    return str(local_path)
+
+def load_config_id_file_from_db_online(config_id, verbose = False, no_alpha = False, solve_geo = True, **kwargs):
+    """
+    Load a specific configuration from online database and return the arguments necessary to initialise a QIC class object.
+
+    Parameters
+    ----------
+        db_file: str
+            Path to the database file in JSON format.
+        config_id: int
+            Config ID to load from the database (0-indexed). Note that the ID in the database is 1-indexed, so the input config_id should be the database ID minus 1.
+        verbose: bool, optional
+            Whether to print verbose output. Default is False.
+        no_alpha: bool, optional
+            Whether to use the alpha_tilde input or resolve for it. Default is False.
+        solve_geo: bool, optional
+            Whether to construct the axis in R3. Default is True.
+        **kwargs: 
+            additional arguments to pass to the QIC class.
+
+    Returns
+    -------
+        props_stel: dict
+            Dictionary containing the arguments necessary to initialise a QIC class object.
+    """
+    # Undo the config name to obtain the nfp, db_file and config_id
+    parts = config_id.split("_")
+    nfp = int(parts[0][1:])
+    sweep_id = int(parts[1])
+    config_id = int(parts[2])
+
+    # Download the file from the online database
+    filename = download_from_database(nfp, sweep_id, config_id)
+
+    # Open the file and load the single JSON object
+    import json
+    with open(filename, 'r') as file:
+        obj = json.load(file)
+    config = {nam: np.array(val) for nam, val in obj.items()}
 
     # Make stel object
     stel, _ = make_stel_object(config)
@@ -351,7 +449,8 @@ def make_stel_object(config):
 
 def construct_qic(stel_in, model = False, smooth = False, no_alpha = False, verbose = False, **kwargs):
     """
-    Construct the QIC class object.
+    Returns the argument necessary to initialise a QIC class object.
+
     Parameters:
     ----------
         stel_in: class object
