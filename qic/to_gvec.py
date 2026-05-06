@@ -12,7 +12,7 @@ def to_gvec(
     ntheta : int = 41,
     nzeta : int = 81,
     outpath : str = "to_gframe",
-    output_prefix : str = "mycase",
+    output_prefix : str = None,
     kwargs_gframe: dict = dict(
         tolerance_clean_surface=1e-6,
         tolerance_output=2e-6,
@@ -20,8 +20,8 @@ def to_gvec(
         atol_field_periodicity=1e-5,
         cutoff_gframe=15,
         ),
-    mpol = None,
-    ntor = None,
+    mpol : int  = None,
+    ntor : int = None,
     verbose: bool = False
     ):
     """
@@ -38,9 +38,9 @@ def to_gvec(
     nzeta : int, optional
         number of toroidal points per field period to evaluate the pyQIC surface, default is ``81``
     outpath : str, optional
-        output path for the files. Will be overwritten if existing. Should have a meaningful name, default is ``"pyQIC_to_gframe"``
+        output path for the files. Will be overwritten if existing. Should have a meaningful name, default is ``"to_gframe"``
     output_prefix: str, optional
-        prefix for output files. Should be set correspondingly. Default is ``"mycase"``
+        prefix for output files. Default is None, which then uses either ``stel.config_name`` if available, otherwise ``"mycase"``.
     kwargs_gframe: dict, optional
         additional parameters passed to the ``gvec.gframe.construct_gframe_from_surface`` function.
         Default keyword arguments set tolerances and enforce stellarator symmetry.
@@ -112,7 +112,13 @@ def to_gvec(
             logger.info(f"created output directory {outpath}")
         else:
             logger.info(f"output directory '{outpath}' is overwritten")
-
+    # prefix setup
+    if output_prefix is None:
+        if hasattr(stel,"config_name"):
+            output_prefix = stel.config_name
+        else:
+            output_prefix = "mycase"
+    
     # write the surface data to a netCDF file and construct the gframe files
     with gvec.util.chdir(outpath):
         gvec.scripts.quasr.save_xyz(

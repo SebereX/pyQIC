@@ -42,7 +42,7 @@ class Qic():
     from .optimize_nae import optimise_params, min_geo_qi_consistency
     from .shape_gradient import mag_well_reshape, minimal_reshape, compute_L_F_matrices, compute_sensitivity_Shafranov_shift
     from .to_vmec import to_vmec
-    from .to_gvec import to_gvec, plot_cross_sections_gframe
+    from .to_gvec import to_gvec
     from .util import B_mag, to_Fourier_cartesian
     from .util_interp import convert_to_spline
     from .input_structure import evaluate_input_on_grid

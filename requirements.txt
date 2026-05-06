@@ -6,7 +6,7 @@ matplotlib>=3.10
 tqdm>=4
 netCDF4>=1.7
 ijson>=3
-scikit-learn>=1.8
+scikit-learn>=1.7
 numba>=0.60
 
 # Plotting and visualization
