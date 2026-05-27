@@ -140,16 +140,21 @@ def to_gvec(
         
         ## Further modify the toml parameters file as needed ##
 
-        # Adjust mpol and ntor mode numbers
-        if mpol is not None and mpol < dict_params['X1_mn_max'][0]:
-            dict_params['X1_mn_max'][0] = mpol
-            dict_params['X2_mn_max'][0] = mpol
-            dict_params['LA_mn_max'][0] = mpol
+        # Adjust mpol and ntor mode numbers.
+        # gvec may provide these entries as tuples, so rebuild values
+        # instead of mutating by index.
+        mode_limit_keys = ("X1_mn_max", "X2_mn_max", "LA_mn_max")
+        if mpol is not None and mpol < dict_params["X1_mn_max"][0]:
+            for key in mode_limit_keys:
+                mn_max = list(dict_params[key])
+                mn_max[0] = mpol
+                dict_params[key] = tuple(mn_max)
 
-        if ntor is not None and ntor < dict_params['X1_mn_max'][1]:
-            dict_params['X1_mn_max'][1] = ntor
-            dict_params['X2_mn_max'][1] = ntor
-            dict_params['LA_mn_max'][1] = ntor
+        if ntor is not None and ntor < dict_params["X1_mn_max"][1]:
+            for key in mode_limit_keys:
+                mn_max = list(dict_params[key])
+                mn_max[1] = ntor
+                dict_params[key] = tuple(mn_max)
         
         # Toroidal current profile over normalized toroidal flux s=rho^2
         mu0 = 4 * np.pi * 1e-7
