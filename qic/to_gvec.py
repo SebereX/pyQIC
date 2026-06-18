@@ -144,13 +144,13 @@ def to_gvec(
         # gvec may provide these entries as tuples, so rebuild values
         # instead of mutating by index.
         mode_limit_keys = ("X1_mn_max", "X2_mn_max", "LA_mn_max")
-        if mpol is not None and mpol < dict_params["X1_mn_max"][0]:
+        if mpol is not None:
             for key in mode_limit_keys:
                 mn_max = list(dict_params[key])
                 mn_max[0] = mpol
                 dict_params[key] = tuple(mn_max)
 
-        if ntor is not None and ntor < dict_params["X1_mn_max"][1]:
+        if ntor is not None:
             for key in mode_limit_keys:
                 mn_max = list(dict_params[key])
                 mn_max[1] = ntor
@@ -171,6 +171,14 @@ def to_gvec(
             "type": "polynomial",
             "coefs": [1.0,-1.0], # p(s) = scale*(coef0 +coef1*s)
             "scale": pscale,    # pscale should be positive, in pascal
+        }
+
+        # Iota profile over normalized toroidal fluxs=rho^2
+        iota = stel.iota
+        dict_params["iota"] = {
+            "type": "polynomial",
+            "coefs": [1.0,0.0], # iota(s) = scale*(coef0 +coef1*s)
+            "scale": iota,    # iota should be positive, in pascal
         }
 
         # Set toroidal flux
