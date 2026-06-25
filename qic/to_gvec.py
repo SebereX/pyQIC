@@ -22,6 +22,7 @@ def to_gvec(
         ),
     mpol : int  = None,
     ntor : int = None,
+    min_res : bool = False,
     verbose: bool = False
     ):
     """
@@ -48,6 +49,8 @@ def to_gvec(
         maximum poloidal mode number for the gframe output. Default is None, which means the mode number is chosen to meet the default gframe tolerances.
     ntor : int, optional
         maximum toroidal mode number for the gframe output. Default is None, which means the mode number is chosen to meet the default gframe tolerances.
+    min_res : bool, optional
+        if True, use mpol and ntor values as a lower bound for resolution
     verbose: bool, optional
         if True, print additional information during the gframe construction, default is False.
 
@@ -147,13 +150,13 @@ def to_gvec(
         if mpol is not None:
             for key in mode_limit_keys:
                 mn_max = list(dict_params[key])
-                mn_max[0] = mpol
+                mn_max[0] = max(mpol, mn_max[0]) if min_res else mpol
                 dict_params[key] = tuple(mn_max)
 
         if ntor is not None:
             for key in mode_limit_keys:
                 mn_max = list(dict_params[key])
-                mn_max[1] = ntor
+                mn_max[1] = max(ntor, mn_max[1]) if min_res else ntor
                 dict_params[key] = tuple(mn_max)
         
         # Toroidal current profile over normalized toroidal flux s=rho^2
