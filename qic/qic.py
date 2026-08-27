@@ -29,12 +29,12 @@ class Qic():
     from .calculate_r3 import calculate_r3
     from .compute_B2_for_r1 import compute_B2_for_r1
     from .fqs import multi_cubic
-    from .load_from_db import from_db, load_info_from_db, do_config_name, undo_config_name
+    from .load_from_db import from_db, load_info_from_db, do_config_name, undo_config_name, load_config_id_file_from_db_online
     from .mercier import mercier, mercier_detailed
     from .precession import plot_precession_different_alpha, maxj_at_bottom
     from .omnigeneity import compute_eps_eff, compute_eps_eff_anal, omn_reshape
     from .plot import plot, get_boundary, get_boundary_cartesians, B_fieldline, B_contour, plot_axis
-    from .r_singularity import calculate_r_singularity, calculate_r_singularity_opt
+    from .r_singularity import calculate_r_singularity, calculate_r_singularity_opt, normalise_rc, inv_normalise_rc
     from .plot import plot, plot_boundary, get_boundary, plot_boundary_cartesians, get_boundary_cartesians, B_fieldline, B_contour, plot_axis, B_densityplot, plot_3d, plot_and_crop_config_3D_nice, get_boundary_shape
     from .fourier_interpolation import fourier_interpolation
     from .Frenet_to_cylindrical import Frenet_to_cylindrical, to_RZ
@@ -42,7 +42,7 @@ class Qic():
     from .optimize_nae import optimise_params, min_geo_qi_consistency
     from .shape_gradient import mag_well_reshape, minimal_reshape, compute_L_F_matrices, compute_sensitivity_Shafranov_shift
     from .to_vmec import to_vmec
-    from .to_gvec import to_gvec
+    from .to_gvec import to_gvec, plot_cross_sections_gframe
     from .util import B_mag, to_Fourier_cartesian
     from .util_interp import convert_to_spline
     from .input_structure import evaluate_input_on_grid

@@ -956,3 +956,33 @@ subroutine quasisymmetry_quartic_roots(coefficients, real_parts, imag_parts)
 
 end subroutine quasisymmetry_quartic_roots
 """
+
+def normalise_rc(self, rc = None):
+    """
+    Evaluates the appropriate normalised A_c = R/r_c for a given configuration.
+    Args:
+        stel (Qic): NAE object
+        rc (float): (optional) if passed, use it to calculate the aspect ratio, if not use r_c from stel.
+    Return:
+        A_c (float): A_c value
+    """
+    # Major radius
+    R = self.G0/(2*np.pi) * (self.nfp*np.trapz(np.append(1/self.B0, 1/self.B0[0]), np.append(self.varphi, 2*np.pi/self.nfp + self.varphi[0])))
+    # Calculate A_c
+    if rc is None:
+        return R/self.r_singularity
+    else:
+        return R/rc
+    
+def inv_normalise_rc(self, A):
+    """
+    Inverse of normalise_rc: given an aspect ratio, compute the equivalent r = R/A.
+    Args:
+        stel (Qic): NAE object
+        A (float): aspect ratio
+    Return:
+        r (float): r = R/A
+    """
+    # Major radius
+    R = self.G0/(2*np.pi) * (self.nfp*np.trapz(np.append(1/self.B0, 1/self.B0[0]), np.append(self.varphi, 2*np.pi/self.nfp + self.varphi[0])))
+    return R/A

@@ -224,7 +224,7 @@ def do_config_name(db_file, config_id, path_header = _DATA_FOLDER_PATH):
         The name of the configuration, in the format ``"Nx_xxx_xxxx"``.
     """
     # Extract the identifier for the database file from the db_file path
-    db_file_identifier = Path(db_file).stem.split("-")[-1].split(".")[0]
+    db_file_identifier = int(Path(db_file).stem.split("-")[-1].split(".")[0])
 
     # Extract the nfp from the db_file path
     nfp = int(Path(db_file).stem.split("-")[2][1:])
@@ -268,7 +268,7 @@ def load_config_id_file_from_db(db_file, config_id):
     return config
 
 
-def download_from_database(nfp, sweep_id, list_id):
+def download_from_database(nfp, sweep_id, list_id, skip_if_exists = True):
     """
     Download a specific configuration file from the online database and return the local path to the downloaded file.
 
@@ -280,7 +280,9 @@ def download_from_database(nfp, sweep_id, list_id):
         Identifier for the database file (sweep), which contains the configuration ID.
     list_id: int
         The list ID of the configuration in the database file (sweep), 0-indexed. 
-
+    skip_if_exists: bool, optional
+        Whether to skip the download if the file already exists in the local temp directory. Default is True.
+        
     Returns
     -------
     local_path: str
@@ -294,18 +296,24 @@ def download_from_database(nfp, sweep_id, list_id):
     temp_dir = Path("temp_db")
     temp_dir.mkdir(parents=True, exist_ok=True)
     local_path = temp_dir / filename
-    # Address for download
-    url = f"https://s3.nexus.mpcdf.mpg.de/public-pyqic-database/data/N{nfp}/sweep{sweep_id:03d}/{filename}"
 
-    with requests.get(url, stream=True) as response, open(local_path, "wb") as file:
-        if not response.ok:
-            raise RuntimeError(
-                f"Failed to download configuration nfp={nfp}, sweep_id={sweep_id}, list_id={list_id} from url={url}: {response.status_code} {response.reason}"
-            )
-        shutil.copyfileobj(response.raw, file)
-        print(f'file "{local_path}" sucessfully downloaded from {url}') 
-    
-    return str(local_path)
+    # Check if the file already exists and skip download if specified
+    if skip_if_exists and local_path.is_file():
+        print(f'file "{local_path}" already exists, skipping download.')
+        return str(local_path)
+    else:
+        # Address for download
+        url = f"https://s3.nexus.mpcdf.mpg.de/public-pyqic-database/data/N{nfp}/sweep{sweep_id:03d}/{filename}"
+
+        with requests.get(url, stream=True) as response, open(local_path, "wb") as file:
+            if not response.ok:
+                raise RuntimeError(
+                    f"Failed to download configuration nfp={nfp}, sweep_id={sweep_id}, list_id={list_id} from url={url}: {response.status_code} {response.reason}"
+                )
+            shutil.copyfileobj(response.raw, file)
+            print(f'file "{local_path}" sucessfully downloaded from {url}') 
+        
+        return str(local_path)
 
 def load_config_id_file_from_db_online(config_name):
     """
@@ -327,8 +335,8 @@ def load_config_id_file_from_db_online(config_name):
     sweep_id = int(parts[1])
     config_id = int(parts[2])
 
-    # Download the file from the online database
-    filename = download_from_database(nfp, sweep_id, config_id)
+    # Download the file from the online database if not exist in local temp directory and load the configuration
+    filename = download_from_database(nfp, sweep_id, config_id, skip_if_exists=True)
 
     # Open the file and load the single JSON object
     import json
